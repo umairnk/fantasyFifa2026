@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIFA 2026 Fantasy Pool</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 500px; }
+        .card { background: #1e293b; padding: 24px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); margin-bottom: 24px; border: 1px solid #334155; }
+        h2 { margin-top: 0; color: #38bdf8; text-align: center; }
+        label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #94a3b8; }
+        input, select { width: 100%; padding: 10px; margin-bottom: 16px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: white; box-sizing: border-box; font-size: 16px; }
+        button { width: 100%; padding: 12px; background: #0284c7; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #0369a1; }
+        .prediction-item { background: #334155; padding: 12px; margin-bottom: 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
+        .player-name { font-weight: bold; color: #38bdf8; }
+        .player-picks { font-size: 14px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="card">
+            <h2>Group A Predictions</h2>
+            
+            <label for="username">Your Name</label>
+            <input type="text" id="username" placeholder="Enter your full name">
+
+            <label for="winner">1st Place (Winner)</label>
+            <select id="winner">
+                <option value="">-- Select Team --</option>
+                <option value="United States">United States</option>
+                <option value="Mexico">Mexico</option>
+                <option value="Canada">Canada</option>
+                <option value="Argentina">Argentina</option>
+                <option value="France">France</option>
+                <option value="England">England</option>
+            </select>
+
+            <label for="runnerup">2nd Place (Runner-up)</label>
+            <select id="runnerup">
+                <option value="">-- Select Team --</option>
+                <option value="United States">United States</option>
+                <option value="Mexico">Mexico</option>
+                <option value="Canada">Canada</option>
+                <option value="Argentina">Argentina</option>
+                <option value="France">France</option>
+                <option value="England">England</option>
+            </select>
+
+            <button id="submitBtn">Lock in Predictions</button>
+        </div>
+
+        <div class="card">
+            <h2>Group Standings Dashboard</h2>
+            <div id="predictionsList">Loading live predictions...</div>
+        </div>
+    </div>
+
+    <script type="module">
+        // 1. Import Firebase Core and Firestore Database from the CDN matching your version
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-analytics.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+        // 2. Your exact configuration keys
+        const firebaseConfig = {
+            apiKey: "AIzaSyBrAVo6DZafG3vxftopaVB7V0QaxzuTwYc",
+            authDomain: "fifafantasy2026-704d9.firebaseapp.com",
+            projectId: "fifafantasy2026-704d9",
+            storageBucket: "fifafantasy2026-704d9.firebasestorage.app",
+            messagingSenderId: "510838555863",
+            appId: "1:510838555863:web:2782ca41fedfdfcdc75c92",
+            measurementId: "G-BQ7LQPBYJ6"
+        };
+
+        // 3. Initialize Firebase & Database
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const db = getFirestore(app);
+
+        // 4. Handle Submitting Predictions
+        document.getElementById('submitBtn').addEventListener('click', async () => {
+            const name = document.getElementById('username').value.trim();
+            const firstPlace = document.getElementById('winner').value;
+            const secondPlace = document.getElementById('runnerup').value;
+
+            if (!name || !firstPlace || !secondPlace) {
+                return alert("Please fill out your name and select both positions!");
+            }
+            if (firstPlace === secondPlace) {
+                return alert("A team cannot finish in both 1st and 2nd place!");
+            }
+
+            try {
+                // Saves to a collection named "group_a_predictions"
+                await addDoc(collection(db, "group_a_predictions"), {
+                    player: name,
+                    winner: firstPlace,
+                    runnerUp: secondPlace,
+                    submittedAt: new Date()
+                });
+                alert("Awesome! Your predictions have been locked in.");
+                
+                // Reset inputs
+                document.getElementById('username').value = '';
+                document.getElementById('winner').value = '';
+                document.getElementById('runnerup').value = '';
+            } catch (error) {
+                console.error("Database error: ", error);
+                alert("Oops! Something went wrong saving your picks.");
+            }
+        });
+
+        // 5. Read Predictions Live (Updates automatically when anyone submits)
+        const q = query(collection(db, "group_a_predictions"), orderBy("submittedAt", "desc"));
+        
+        onSnapshot(q, (snapshot) => {
+            const listDiv = document.getElementById('predictionsList');
+            listDiv.innerHTML = ''; // Clear out the loading text
+
+            if (snapshot.empty) {
+                listDiv.innerHTML = '<p style="text-align:center; color:#64748b;">No predictions submitted yet.</p>';
+                return;
+            }
+
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                
+                // Create HTML wrapper for each player's predictions
+                const item = document.createElement('div');
+                item.className = 'prediction-item';
+                item.innerHTML = `
+                    <span class="player-name">${data.player}</span>
+                    <span class="player-picks">1st: <b>${data.winner}</b> | 2nd: <b>${data.runnerUp}</b></span>
+                `;
+                listDiv.appendChild(item);
+            });
+        });
+    </script>
+</body>
+</html>
