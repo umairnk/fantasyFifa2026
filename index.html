@@ -1,27 +1,149 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
     <title>Fantasy FIFA 2026</title>
 
     <link rel="stylesheet" href="css/style.css">
 
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin-top: 100px;
-        }
-    </style>
 </head>
 
 <body>
 
-    <h1>⚽ Fantasy FIFA 2026 ⚽</h1>
+    <nav id="navbar">
 
-    <h2 id="status">Connecting to Firebase...</h2>
+        <div class="logo">
+            ⚽ Fantasy FIFA 2026
+        </div>
 
-    <script type="module" src="js/firebase.js"></script>
+        <div id="navButtons">
+
+            <button id="homeBtn">
+                Home
+            </button>
+
+            <button id="groupsBtn">
+                Groups
+            </button>
+
+            <button id="predictionsBtn">
+                Predictions
+            </button>
+
+            <button id="leaderboardBtn">
+                Leaderboard
+            </button>
+
+            <button id="logoutBtn">
+                Logout
+            </button>
+
+            <button id="adminBtn" style="display:none;">
+                Admin Area
+            </button>
+
+        </div>
+
+    </nav>
+
+    <div id="loginSection">
+
+        <h2>Sign Up / Log In</h2>
+
+        <input
+            type="text"
+            id="usernameInput"
+            placeholder="Enter username">
+
+        <br><br>
+        
+        <input
+            type="password"
+            id="passwordInput"
+            placeholder="Enter 5-digit password"
+            maxlength="5"
+            inputmode="numeric">
+
+        <p class="smallText">
+            Use a 5-digit numerical password. Do not use a password that you use for banking or important accounts.
+        </p>
+
+        <button id="signupBtn">
+            Sign Up
+        </button>
+
+        <button id="loginBtn">
+            Log In
+        </button>
+
+    </div>
+
+    <div id="appSection" style="display:none;">
+
+        <h2 id="welcomeText"></h2>
+
+        <div id="homePage">
+
+            <hr>
+
+            <h2>Create Group</h2>
+
+            <input
+                type="text"
+                id="groupNameInput"
+                placeholder="Group Name">
+
+            <button id="createGroupBtn">
+                Create Group
+            </button>
+
+            <hr>
+
+            <h2>Join Group</h2>
+
+            <input
+                type="text"
+                id="joinCodeInput"
+                placeholder="Enter Join Code">
+
+            <button id="joinGroupBtn">
+                Join Group
+            </button>
+
+            <hr>
+
+            <h2>Public Groups</h2>
+
+            <div id="groupsContainer"></div>
+
+        </div>
+
+        <div id="predictionsPage" style="display:none;">
+
+            <div id="predictionsContainer"></div>
+
+        </div>
+
+        <div id="adminPage" style="display:none;">
+
+            <div id="adminContainer"></div>
+
+        </div>
+
+        <div id="leaderboardPage" style="display:none;">
+
+            <div id="leaderboardContainer"></div>
+
+        </div>
+
+    </div>
+
     <script type="module" src="js/app.js"></script>
 
 </body>

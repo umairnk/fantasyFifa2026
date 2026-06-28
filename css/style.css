@@ -1,0 +1,450 @@
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background: #f4f4f4;
+    padding-top: 0;
+    margin: 0;
+}
+
+nav {
+    background: darkgreen;
+    color: white;
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 40px;
+}
+
+.logo {
+    font-size: 26px;
+    font-weight: bold;
+}
+
+button {
+    padding: 10px 16px;
+    margin: 6px;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+}
+
+input {
+    padding: 10px;
+    font-size: 16px;
+    border-radius: 8px;
+    border: 1px solid #bbb;
+}
+
+.groupCard,
+.matchCard,
+.adminMatchCard {
+    background: white;
+    margin: 20px auto;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.2);
+}
+
+.groupCard {
+    width: 350px;
+}
+
+.matchCard {
+    width: 420px;
+    max-width: 90%;
+}
+
+.adminMatchCard {
+    width: 520px;
+    max-width: 95%;
+}
+
+.smallText {
+    color: gray;
+    font-size: 12px;
+}
+
+.warningText {
+    color: darkred;
+    font-weight: bold;
+}
+
+.teamRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #eeeeee;
+    margin: 10px 0;
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 18px;
+}
+
+.selectedWinner {
+    background: #d4edda;
+    border: 2px solid darkgreen;
+    font-weight: bold;
+}
+
+.teamButton {
+    background: white;
+    color: darkgreen;
+    border: 2px solid darkgreen;
+    font-weight: bold;
+    min-width: 180px;
+}
+
+.selectedWinner .teamButton {
+    background: darkgreen;
+    color: white;
+}
+
+.goalPlus,
+.goalMinus {
+    width: 36px;
+    height: 36px;
+    font-weight: bold;
+}
+
+.bigButton,
+.saveMatchBtn,
+#recalculateLeaderboardBtn {
+    background: darkgreen;
+    color: white;
+    font-weight: bold;
+}
+
+.leaderboardSeparator {
+    margin: 25px auto;
+    width: 95%;
+    border: none;
+    border-top: 3px solid #cfcfcf;
+}
+
+.leaderboardWrapper {
+    width: 98%;
+    margin: 25px auto;
+    overflow-x: auto;
+    border-radius: 16px;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+    background: white;
+}
+
+.leaderboardTable {
+    width: 100%;
+    min-width: 900px;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: white;
+    font-size: 15px;
+}
+
+.leaderboardTable thead th {
+    position: sticky;
+    top: 0;
+    background: linear-gradient(180deg, #149414, #086308);
+    color: white;
+    padding: 18px;
+    text-align: center;
+    border-right: 2px solid rgba(255,255,255,0.3);
+    font-size: 15px;
+    letter-spacing: 0.3px;
+    z-index: 2;
+}
+
+.leaderboardTable thead th:last-child {
+    border-right: none;
+}
+
+.leaderboardTable td {
+    padding: 15px 18px;
+    text-align: center !important;
+    vertical-align: middle;
+    border-right: 1px solid #dcdcdc;
+    border-bottom: 1px solid #dcdcdc;
+    white-space: nowrap;
+}
+
+.leaderboardTable td:last-child {
+    border-right: none;
+}
+
+.leaderboardTable tbody tr:nth-child(odd):not(.goldRow):not(.silverRow):not(.bronzeRow) td {
+    background: #ffffff;
+}
+
+.leaderboardTable tbody tr:nth-child(even):not(.goldRow):not(.silverRow):not(.bronzeRow) td {
+    background: #f3f8ff;
+}
+
+.leaderboardTable tbody tr:hover td {
+    background: #dff5df !important;
+}
+
+.rankColumn {
+    background: #f2f2f2 !important;
+    text-align: center !important;
+    font-size: 22px;
+    font-weight: bold;
+}
+
+.playerColumn {
+    background: #eef7ff !important;
+    text-align: center !important;
+    font-size: 17px;
+}
+
+.pointsColumn {
+    background: #e8f8e8 !important;
+    text-align: center !important;
+}
+
+.pointsBadge {
+    background: darkgreen;
+    color: white;
+    padding: 7px 14px;
+    border-radius: 20px;
+    font-weight: bold;
+    display: inline-block;
+    min-width: 35px;
+    text-align: center;
+}
+
+.goldRow td {
+    background: #fff4b8 !important;
+}
+
+.silverRow td {
+    background: #ececec !important;
+}
+
+.bronzeRow td {
+    background: #f5ddc4 !important;
+}
+
+.openGroupBtn {
+    background: darkgreen;
+    color: white;
+    font-weight: bold;
+}
+
+
+.comparePlayers {
+    margin: 20px auto;
+}
+
+.comparePlayerBtn {
+    background: #0b6b0b;
+    color: white;
+    font-weight: bold;
+    border: none;
+    padding: 12px 18px;
+    margin: 8px;
+    border-radius: 10px;
+}
+
+.comparisonSummary {
+    width: 95%;
+    margin: 25px auto;
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+
+.comparisonSummary div {
+    background: white;
+    min-width: 180px;
+    padding: 18px;
+    border-radius: 15px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.16);
+}
+
+.summaryPoints {
+    font-size: 32px;
+    font-weight: bold;
+    color: darkgreen;
+    margin: 5px;
+}
+
+.comparisonMatchCard {
+    background: white;
+    width: 95%;
+    max-width: 900px;
+    margin: 25px auto;
+    padding: 20px;
+    border-radius: 16px;
+    box-shadow: 0 5px 18px rgba(0,0,0,0.16);
+}
+
+.comparisonTwoColumns {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+
+.comparisonPlayerBox {
+    background: #f7fbff;
+    border: 1px solid #d8e9f8;
+    min-width: 260px;
+    padding: 16px;
+    border-radius: 14px;
+}
+
+.matchWinnerText {
+    font-size: 20px;
+    font-weight: bold;
+    color: darkgreen;
+}
+
+.miniLeaderboard {
+    margin-top: 18px;
+    background: #f8fff8;
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.miniLeaderboard table {
+    margin: 0 auto;
+    border-collapse: collapse;
+}
+
+.miniLeaderboard td {
+    padding: 8px 18px;
+    border-bottom: 1px solid #ddd;
+}
+
+.matchMeta {
+    color: #555;
+    font-size: 14px;
+    margin-top: -5px;
+}
+
+.statusBadge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.statusBadge.upcoming {
+    background: #e8eef7;
+    color: #245;
+}
+
+.statusBadge.live {
+    background: #ffe1e1;
+    color: darkred;
+}
+
+.statusBadge.finished {
+    background: #e1f5e1;
+    color: darkgreen;
+}
+
+.scoringExplanation {
+    background: white;
+    width: 92%;
+    max-width: 850px;
+    margin: 30px auto;
+    padding: 22px;
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+    text-align: left;
+}
+
+.scoringExplanation h2 {
+    text-align: center;
+    color: darkgreen;
+}
+
+.scoringExplanation li {
+    margin: 8px 0;
+}
+
+@media (max-width: 700px) {
+
+    nav {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    #navButtons {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    #navButtons button {
+        font-size: 14px;
+        padding: 9px 12px;
+        margin: 4px;
+    }
+
+    .logo {
+        font-size: 22px;
+    }
+
+    input {
+        width: 85%;
+        max-width: 320px;
+    }
+
+    .groupCard,
+    .matchCard,
+    .adminMatchCard,
+    .comparisonMatchCard {
+        width: 90%;
+        padding: 16px;
+    }
+
+    .teamRow {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .teamButton {
+        min-width: 220px;
+        width: 90%;
+    }
+
+    .comparisonTwoColumns {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .comparisonPlayerBox {
+        width: 90%;
+    }
+
+    .leaderboardWrapper {
+        width: 96%;
+        overflow-x: auto;
+    }
+
+    .leaderboardTable {
+        min-width: 760px;
+        font-size: 13px;
+    }
+
+    .leaderboardTable th,
+    .leaderboardTable td {
+        padding: 10px 12px;
+    }
+
+    .pointsBadge {
+        padding: 5px 10px;
+    }
+
+    .scoringExplanation {
+        width: 86%;
+        font-size: 14px;
+    }
+}
