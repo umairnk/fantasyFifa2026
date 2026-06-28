@@ -448,3 +448,33 @@ input {
         font-size: 14px;
     }
 }
+
+
+.adminMemberRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f3f8ff;
+    margin: 8px auto;
+    padding: 10px;
+    border-radius: 8px;
+    max-width: 420px;
+}
+
+.removeUserFromGroupBtn {
+    background: darkred;
+    color: white;
+    font-weight: bold;
+}
+
+.addUserToGroupBtn {
+    background: darkgreen;
+    color: white;
+    font-weight: bold;
+}
+
+.deleteGroupBtn {
+    background: #8b0000;
+    color: white;
+    font-weight: bold;
+}
