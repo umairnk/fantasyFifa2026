@@ -21,6 +21,7 @@ from "./predictions.js";
 
 import {
     isAdmin,
+    canUpdateResults,
     loadAdminPage
 }
 from "./admin.js";
@@ -50,7 +51,7 @@ async function startApp() {
 
     await initializeMatches();
 
-    if (await isAdmin(username)) {
+    if (await canUpdateResults(username)) {
         showAdminButton();
     }
 

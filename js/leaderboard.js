@@ -99,8 +99,6 @@ async function recalculateLeaderboard(leaderboardId, groupId) {
 
 
 function calculateIndividualWins(leaderboard, players, matches) {
-    // Full exact match-win calculation will be improved later.
-    // For now this keeps the field available only for group leaderboards.
     players.forEach(player => {
         if (!leaderboard[player].individualWins) {
             leaderboard[player].individualWins = 0;
@@ -114,7 +112,8 @@ export async function loadGlobalLeaderboard() {
         title: "🏆 Global Leaderboard",
         leaderboardId: "global",
         groupId: null,
-        showWins: false
+        showWins: false,
+        isGlobal: true
     });
 }
 
@@ -124,7 +123,8 @@ export async function loadGroupLeaderboard(groupId, groupName) {
         title: `🏆 ${groupName} Leaderboard`,
         leaderboardId: groupId,
         groupId,
-        showWins: true
+        showWins: true,
+        isGlobal: false
     });
 }
 
@@ -180,7 +180,15 @@ async function loadLeaderboardPage(config) {
                 rows = await recalculateGlobalLeaderboard();
             }
 
-            renderLeaderboard(rows, config.showWins);
+            rows = sortLeaderboard(rows);
+
+            renderLeaderboard(
+                config.isGlobal ? rows.slice(0, 10) : rows,
+                config.showWins,
+                config.isGlobal,
+                rows.length
+            );
+
             alert("Leaderboard recalculated.");
         });
 
@@ -189,17 +197,24 @@ async function loadLeaderboardPage(config) {
             collection(db, "leaderboards", config.leaderboardId, "users")
         );
 
-    const rows = [];
+    let rows = [];
 
     snap.forEach(docSnap => {
         rows.push(docSnap.data());
     });
 
-    renderLeaderboard(sortLeaderboard(rows), config.showWins);
+    rows = sortLeaderboard(rows);
+
+    renderLeaderboard(
+        config.isGlobal ? rows.slice(0, 10) : rows,
+        config.showWins,
+        config.isGlobal,
+        rows.length
+    );
 }
 
 
-function renderLeaderboard(rows, showWins) {
+function renderLeaderboard(rows, showWins, isGlobal = false, totalPlayers = null) {
     const table = document.getElementById("leaderboardTable");
 
     if (rows.length === 0) {
@@ -208,6 +223,16 @@ function renderLeaderboard(rows, showWins) {
     }
 
     table.innerHTML = `
+        ${
+            isGlobal
+            ? `
+                <p class="leaderboardInfoText">
+                    Showing top 10 out of total ${totalPlayers} players
+                </p>
+              `
+            : ""
+        }
+
         <div class="leaderboardWrapper">
             <table class="leaderboardTable">
                 <thead>

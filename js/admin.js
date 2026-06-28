@@ -20,29 +20,69 @@ import {
 from "./leaderboard.js";
 
 
+let currentAdminUsername = null;
+let currentUserIsFullAdmin = false;
+
+
 export async function isAdmin(username) {
     const snap = await getDoc(doc(db, "users", username));
     return snap.exists() && snap.data().isAdmin === true;
 }
 
 
-export async function loadAdminPage() {
+export async function canUpdateResults(username) {
+    const snap = await getDoc(doc(db, "users", username));
+
+    if (!snap.exists()) {
+        return false;
+    }
+
+    const data = snap.data();
+
+    return data.isAdmin === true || data.canUpdateResults === true;
+}
+
+
+export async function loadAdminPage(username = null) {
+    currentAdminUsername = username;
+    currentUserIsFullAdmin = username ? await isAdmin(username) : false;
+
     const container = document.getElementById("adminContainer");
 
+    if (currentUserIsFullAdmin) {
+        container.innerHTML = `
+            <h2>Admin Area</h2>
+
+            <h2>Group Management</h2>
+            <div id="adminGroupsContainer"></div>
+
+            <hr>
+
+            <h2>Admin Match Editor</h2>
+            <div id="adminMatchesContainer"></div>
+        `;
+
+        await loadAdminGroups();
+        await loadAdminMatches();
+        return;
+    }
+
     container.innerHTML = `
-        <h2>Admin Area</h2>
+        <h2>Match Result Admin</h2>
 
-        <h2>Group Management</h2>
-        <div id="adminGroupsContainer"></div>
+        <p class="smallText">
+            You can update match scores, winner and status only.
+        </p>
 
-        <hr>
-
-        <h2>Admin Match Editor</h2>
         <div id="adminMatchesContainer"></div>
     `;
 
-    await loadAdminGroups();
     await loadAdminMatches();
+}
+
+
+async function reloadAdminPage() {
+    await loadAdminPage(currentAdminUsername);
 }
 
 
@@ -54,9 +94,12 @@ async function loadAdminGroups() {
     const usersSnap = await getDocs(collection(db, "users"));
 
     const users = [];
+
     usersSnap.forEach(userDoc => {
         users.push(userDoc.id);
     });
+
+    users.sort();
 
     groupsSnap.forEach(groupDoc => {
         const group = groupDoc.data();
@@ -104,6 +147,7 @@ async function loadAdminGroups() {
 
                 <select id="addUserSelect_${groupId}">
                     <option value="">Select user</option>
+
                     ${users.map(user => `
                         <option value="${user}">
                             ${user}
@@ -147,11 +191,8 @@ async function loadAdminMatches() {
     matches.sort((a, b) => a.id.localeCompare(b.id));
 
     matches.forEach(match => {
-        container.innerHTML += `
-            <div class="adminMatchCard">
-
-                <h3>${match.id}</h3>
-
+        const teamInputs = currentUserIsFullAdmin
+            ? `
                 <input id="${match.id}_homeTeam"
                        value="${match.homeTeam}">
 
@@ -159,6 +200,29 @@ async function loadAdminMatches() {
 
                 <input id="${match.id}_awayTeam"
                        value="${match.awayTeam}">
+            `
+            : `
+                <p>
+                    <strong>${match.homeTeam}</strong>
+                    vs
+                    <strong>${match.awayTeam}</strong>
+                </p>
+
+                <input type="hidden"
+                       id="${match.id}_homeTeam"
+                       value="${match.homeTeam}">
+
+                <input type="hidden"
+                       id="${match.id}_awayTeam"
+                       value="${match.awayTeam}">
+            `;
+
+        container.innerHTML += `
+            <div class="adminMatchCard">
+
+                <h3>${match.id}</h3>
+
+                ${teamInputs}
 
                 <br><br>
 
@@ -204,7 +268,7 @@ async function loadAdminMatches() {
 
                 <button class="saveMatchBtn"
                         data-id="${match.id}">
-                    Save
+                    Save Result
                 </button>
 
             </div>
@@ -239,7 +303,7 @@ function attachGroupAdminEvents() {
             await recalculateGroupLeaderboard(groupId);
 
             alert(`${username} added to group.`);
-            loadAdminPage();
+            await reloadAdminPage();
         });
     });
 
@@ -265,7 +329,7 @@ function attachGroupAdminEvents() {
             await recalculateGroupLeaderboard(groupId);
 
             alert(`${username} removed from group.`);
-            loadAdminPage();
+            await reloadAdminPage();
         });
     });
 
@@ -313,7 +377,7 @@ function attachGroupAdminEvents() {
             await deleteDoc(doc(db, "groups", groupId));
 
             alert(`Group "${groupName}" deleted.`);
-            loadAdminPage();
+            await reloadAdminPage();
         });
     });
 }
@@ -390,6 +454,7 @@ function attachMatchAdminEvents() {
             }
 
             alert(`${matchId} saved and all leaderboards recalculated.`);
+            await reloadAdminPage();
         });
     });
 }
