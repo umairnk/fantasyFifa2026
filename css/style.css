@@ -488,3 +488,15 @@ input {
     border-radius: 20px;
     margin: 15px auto;
 }
+
+.renameUserBtn {
+    background: #0b6b0b;
+    color: white;
+    font-weight: bold;
+}
+
+.deleteUserBtn {
+    background: darkred;
+    color: white;
+    font-weight: bold;
+}

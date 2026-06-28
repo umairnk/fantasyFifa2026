@@ -9,7 +9,8 @@ import {
     deleteDoc,
     deleteField,
     arrayUnion,
-    arrayRemove
+    arrayRemove,
+    setDoc
 }
 from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
 
@@ -33,9 +34,7 @@ export async function isAdmin(username) {
 export async function canUpdateResults(username) {
     const snap = await getDoc(doc(db, "users", username));
 
-    if (!snap.exists()) {
-        return false;
-    }
+    if (!snap.exists()) return false;
 
     const data = snap.data();
 
@@ -53,6 +52,11 @@ export async function loadAdminPage(username = null) {
         container.innerHTML = `
             <h2>Admin Area</h2>
 
+            <h2>User Management</h2>
+            <div id="adminUsersContainer"></div>
+
+            <hr>
+
             <h2>Group Management</h2>
             <div id="adminGroupsContainer"></div>
 
@@ -62,6 +66,7 @@ export async function loadAdminPage(username = null) {
             <div id="adminMatchesContainer"></div>
         `;
 
+        await loadAdminUsers();
         await loadAdminGroups();
         await loadAdminMatches();
         return;
@@ -83,6 +88,111 @@ export async function loadAdminPage(username = null) {
 
 async function reloadAdminPage() {
     await loadAdminPage(currentAdminUsername);
+}
+
+
+async function loadAdminUsers() {
+    const container = document.getElementById("adminUsersContainer");
+    container.innerHTML = "";
+
+    const usersSnap = await getDocs(collection(db, "users"));
+
+    const users = [];
+
+    usersSnap.forEach(userDoc => {
+        users.push({
+            username: userDoc.id,
+            ...userDoc.data()
+        });
+    });
+
+    users.sort((a, b) => a.username.localeCompare(b.username));
+
+    container.innerHTML = users.map(user => `
+        <div class="adminMemberRow">
+            <span>👤 ${user.username}</span>
+
+            <input
+                type="text"
+                id="renameUserInput_${user.username}"
+                placeholder="New username">
+
+            <button class="renameUserBtn"
+                    data-username="${user.username}">
+                Rename
+            </button>
+
+            <button class="deleteUserBtn"
+                    data-username="${user.username}">
+                Delete User
+            </button>
+        </div>
+    `).join("");
+
+    attachUserAdminEvents();
+}
+
+
+function attachUserAdminEvents() {
+    document.querySelectorAll(".deleteUserBtn").forEach(button => {
+        button.addEventListener("click", async () => {
+            const username = button.dataset.username;
+
+            if (username === currentAdminUsername) {
+                alert("You cannot delete your own account while logged in.");
+                return;
+            }
+
+            const confirmDelete = confirm(
+                `Delete user "${username}" completely?\n\nThis deletes the user profile, predictions, group memberships and leaderboard records.`
+            );
+
+            if (!confirmDelete) return;
+
+            await deleteUserCompletely(username);
+
+            alert(`${username} deleted completely.`);
+            await reloadAdminPage();
+        });
+    });
+
+
+    document.querySelectorAll(".renameUserBtn").forEach(button => {
+        button.addEventListener("click", async () => {
+            const oldUsername = button.dataset.username;
+
+            const input =
+                document.getElementById(`renameUserInput_${oldUsername}`);
+
+            const newUsername = input.value.trim();
+
+            if (!newUsername) {
+                alert("Please enter a new username.");
+                return;
+            }
+
+            if (oldUsername === newUsername) {
+                alert("New username is same as old username.");
+                return;
+            }
+
+            const confirmRename = confirm(
+                `Rename "${oldUsername}" to "${newUsername}"?\n\nYes, the login username will also change.`
+            );
+
+            if (!confirmRename) return;
+
+            await renameUserCompletely(oldUsername, newUsername);
+
+            if (oldUsername === currentAdminUsername) {
+                localStorage.setItem("username", newUsername);
+                currentAdminUsername = newUsername;
+            }
+
+            alert(`${oldUsername} renamed to ${newUsername}.`);
+            await reloadAdminPage();
+        });
+    });
 }
 
 
@@ -457,4 +567,151 @@ function attachMatchAdminEvents() {
             await reloadAdminPage();
         });
     });
+}
+
+
+async function deleteUserCompletely(username) {
+    const userRef = doc(db, "users", username);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) {
+        alert("User not found.");
+        return;
+    }
+
+    const groupsSnap = await getDocs(collection(db, "groups"));
+
+    for (const groupDoc of groupsSnap.docs) {
+        const group = groupDoc.data();
+
+        if (group.members && group.members[username]) {
+            await updateDoc(doc(db, "groups", groupDoc.id), {
+                [`members.${username}`]: deleteField()
+            });
+        }
+    }
+
+    const predictionsSnap =
+        await getDocs(collection(db, "predictions", username, "matches"));
+
+    for (const predictionDoc of predictionsSnap.docs) {
+        await deleteDoc(
+            doc(db, "predictions", username, "matches", predictionDoc.id)
+        );
+    }
+
+    await deleteDoc(doc(db, "predictions", username));
+
+    const leaderboardsSnap = await getDocs(collection(db, "leaderboards"));
+
+    for (const leaderboardDoc of leaderboardsSnap.docs) {
+        const leaderboardUserRef =
+            doc(db, "leaderboards", leaderboardDoc.id, "users", username);
+
+        const leaderboardUserSnap = await getDoc(leaderboardUserRef);
+
+        if (leaderboardUserSnap.exists()) {
+            await deleteDoc(leaderboardUserRef);
+        }
+    }
+
+    await deleteDoc(userRef);
+
+    await recalculateGlobalLeaderboard();
+
+    const groupsAfterSnap = await getDocs(collection(db, "groups"));
+
+    for (const groupDoc of groupsAfterSnap.docs) {
+        await recalculateGroupLeaderboard(groupDoc.id);
+    }
+}
+
+
+async function renameUserCompletely(oldUsername, newUsername) {
+    const oldUserRef = doc(db, "users", oldUsername);
+    const oldUserSnap = await getDoc(oldUserRef);
+
+    if (!oldUserSnap.exists()) {
+        alert("Old user not found.");
+        return;
+    }
+
+    const newUserRef = doc(db, "users", newUsername);
+    const newUserSnap = await getDoc(newUserRef);
+
+    if (newUserSnap.exists()) {
+        alert("New username already exists.");
+        return;
+    }
+
+    const oldUserData = oldUserSnap.data();
+
+    await setDoc(newUserRef, {
+        ...oldUserData,
+        username: newUsername,
+        renamedFrom: oldUsername,
+        renamedAt: new Date().toISOString()
+    });
+
+    const groupsSnap = await getDocs(collection(db, "groups"));
+
+    for (const groupDoc of groupsSnap.docs) {
+        const group = groupDoc.data();
+
+        if (group.members && group.members[oldUsername]) {
+            await updateDoc(doc(db, "groups", groupDoc.id), {
+                [`members.${oldUsername}`]: deleteField(),
+                [`members.${newUsername}`]: true
+            });
+        }
+    }
+
+    const predictionsSnap =
+        await getDocs(collection(db, "predictions", oldUsername, "matches"));
+
+    for (const predictionDoc of predictionsSnap.docs) {
+        await setDoc(
+            doc(db, "predictions", newUsername, "matches", predictionDoc.id),
+            predictionDoc.data()
+        );
+
+        await deleteDoc(
+            doc(db, "predictions", oldUsername, "matches", predictionDoc.id)
+        );
+    }
+
+    await deleteDoc(doc(db, "predictions", oldUsername));
+
+    const leaderboardsSnap = await getDocs(collection(db, "leaderboards"));
+
+    for (const leaderboardDoc of leaderboardsSnap.docs) {
+        const oldLeaderboardRef =
+            doc(db, "leaderboards", leaderboardDoc.id, "users", oldUsername);
+
+        const oldLeaderboardSnap = await getDoc(oldLeaderboardRef);
+
+        if (oldLeaderboardSnap.exists()) {
+            const oldLeaderboardData = oldLeaderboardSnap.data();
+
+            await setDoc(
+                doc(db, "leaderboards", leaderboardDoc.id, "users", newUsername),
+                {
+                    ...oldLeaderboardData,
+                    player: newUsername
+                }
+            );
+
+            await deleteDoc(oldLeaderboardRef);
+        }
+    }
+
+    await deleteDoc(oldUserRef);
+
+    await recalculateGlobalLeaderboard();
+
+    const groupsAfterSnap = await getDocs(collection(db, "groups"));
+
+    for (const groupDoc of groupsAfterSnap.docs) {
+        await recalculateGroupLeaderboard(groupDoc.id);
+    }
 }

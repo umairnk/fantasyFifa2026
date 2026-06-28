@@ -78,7 +78,7 @@ function openPredictionsPage() {
 
 function openAdminPage() {
     showPage("adminPage");
-    loadAdminPage();
+    loadAdminPage(getCurrentUser());
 }
 
 
