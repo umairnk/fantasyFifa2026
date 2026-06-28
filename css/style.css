@@ -500,3 +500,10 @@ input {
     color: white;
     font-weight: bold;
 }
+
+#signUpBtn:disabled {
+    background: #bdbdbd;
+    color: #666;
+    cursor: not-allowed;
+    opacity: 0.8;
+}

@@ -1,32 +1,36 @@
 export function calculatePoints(prediction, result) {
     if (
+        !result ||
         result.homeGoals === null ||
         result.awayGoals === null ||
-        result.status !== "finished"
+        result.homeGoals === undefined ||
+        result.awayGoals === undefined ||
+        result.status !== "finished" ||
+        !result.winner
     ) {
         return null;
     }
 
     let points = 0;
 
-    const actualWinner =
-        result.homeGoals > result.awayGoals
-            ? result.homeTeam
-            : result.awayGoals > result.homeGoals
-                ? result.awayTeam
-                : "Draw";
+    const actualWinner = result.winner;
+
+    const actualLoser =
+        actualWinner === result.homeTeam
+            ? result.awayTeam
+            : result.homeTeam;
 
     const predictedWinner = prediction.winner;
 
-    const predictedWinnerGoals =
-        predictedWinner === prediction.homeTeam
+    const predictedGoalsForActualWinner =
+        actualWinner === result.homeTeam
             ? prediction.homeGoals
             : prediction.awayGoals;
 
-    const predictedLoserGoals =
-        predictedWinner === prediction.homeTeam
-            ? prediction.awayGoals
-            : prediction.homeGoals;
+    const predictedGoalsForActualLoser =
+        actualLoser === result.homeTeam
+            ? prediction.homeGoals
+            : prediction.awayGoals;
 
     const actualWinnerGoals =
         actualWinner === result.homeTeam
@@ -34,25 +38,25 @@ export function calculatePoints(prediction, result) {
             : result.awayGoals;
 
     const actualLoserGoals =
-        actualWinner === result.homeTeam
-            ? result.awayGoals
-            : result.homeGoals;
+        actualLoser === result.homeTeam
+            ? result.homeGoals
+            : result.awayGoals;
 
     const predictedGoalDiff =
-        Math.abs(prediction.homeGoals - prediction.awayGoals);
+        prediction.homeGoals - prediction.awayGoals;
 
     const actualGoalDiff =
-        Math.abs(result.homeGoals - result.awayGoals);
+        result.homeGoals - result.awayGoals;
 
     if (predictedWinner === actualWinner) {
         points += 1;
     }
 
-    if (predictedWinnerGoals === actualWinnerGoals) {
+    if (predictedGoalsForActualWinner === actualWinnerGoals) {
         points += 1;
     }
 
-    if (predictedLoserGoals === actualLoserGoals) {
+    if (predictedGoalsForActualLoser === actualLoserGoals) {
         points += 1;
     }
 

@@ -7,7 +7,6 @@ import {
     updateDoc,
     getDoc,
     deleteDoc,
-    deleteField,
     arrayUnion,
     arrayRemove,
     setDoc
@@ -114,16 +113,16 @@ async function loadAdminUsers() {
 
             <input
                 type="text"
-                id="renameUserInput_${user.username}"
+                id="renameUserInput_${safeHtmlId(user.username)}"
                 placeholder="New username">
 
             <button class="renameUserBtn"
-                    data-username="${user.username}">
+                    data-username="${escapeHtml(user.username)}">
                 Rename
             </button>
 
             <button class="deleteUserBtn"
-                    data-username="${user.username}">
+                    data-username="${escapeHtml(user.username)}">
                 Delete User
             </button>
         </div>
@@ -162,7 +161,7 @@ function attachUserAdminEvents() {
             const oldUsername = button.dataset.username;
 
             const input =
-                document.getElementById(`renameUserInput_${oldUsername}`);
+                document.getElementById(`renameUserInput_${safeHtmlId(oldUsername)}`);
 
             const newUsername = input.value.trim();
 
@@ -244,7 +243,7 @@ async function loadAdminGroups() {
 
                             <button class="removeUserFromGroupBtn"
                                     data-group-id="${groupId}"
-                                    data-username="${member}">
+                                    data-username="${escapeHtml(member)}">
                                 Remove
                             </button>
                         </div>
@@ -259,7 +258,7 @@ async function loadAdminGroups() {
                     <option value="">Select user</option>
 
                     ${users.map(user => `
-                        <option value="${user}">
+                        <option value="${escapeHtml(user)}">
                             ${user}
                         </option>
                     `).join("")}
@@ -274,7 +273,7 @@ async function loadAdminGroups() {
 
                 <button class="deleteGroupBtn"
                         data-group-id="${groupId}"
-                        data-group-name="${group.groupName}">
+                        data-group-name="${escapeHtml(group.groupName)}">
                     Delete Group
                 </button>
 
@@ -402,13 +401,7 @@ function attachGroupAdminEvents() {
                 return;
             }
 
-            await updateDoc(doc(db, "groups", groupId), {
-                [`members.${username}`]: true
-            });
-
-            await updateDoc(doc(db, "users", username), {
-                groups: arrayUnion(groupId)
-            });
+            await addUserToGroupSafe(username, groupId);
 
             await recalculateGroupLeaderboard(groupId);
 
@@ -428,13 +421,7 @@ function attachGroupAdminEvents() {
 
             if (!confirmRemove) return;
 
-            await updateDoc(doc(db, "groups", groupId), {
-                [`members.${username}`]: deleteField()
-            });
-
-            await updateDoc(doc(db, "users", username), {
-                groups: arrayRemove(groupId)
-            });
+            await removeUserFromGroupSafe(username, groupId);
 
             await recalculateGroupLeaderboard(groupId);
 
@@ -570,6 +557,50 @@ function attachMatchAdminEvents() {
 }
 
 
+async function addUserToGroupSafe(username, groupId) {
+    const groupRef = doc(db, "groups", groupId);
+    const groupSnap = await getDoc(groupRef);
+
+    if (!groupSnap.exists()) return;
+
+    const group = groupSnap.data();
+    const members = group.members ? { ...group.members } : {};
+
+    members[username] = true;
+
+    await updateDoc(groupRef, {
+        members
+    });
+
+    await updateDoc(doc(db, "users", username), {
+        groups: arrayUnion(groupId)
+    });
+}
+
+
+async function removeUserFromGroupSafe(username, groupId) {
+    const groupRef = doc(db, "groups", groupId);
+    const groupSnap = await getDoc(groupRef);
+
+    if (!groupSnap.exists()) return;
+
+    const group = groupSnap.data();
+    const members = group.members ? { ...group.members } : {};
+
+    delete members[username];
+
+    await updateDoc(groupRef, {
+        members
+    });
+
+    await updateDoc(doc(db, "users", username), {
+        groups: arrayRemove(groupId)
+    });
+
+    await deleteDoc(doc(db, "leaderboards", groupId, "users", username));
+}
+
+
 async function deleteUserCompletely(username) {
     const userRef = doc(db, "users", username);
     const userSnap = await getDoc(userRef);
@@ -582,13 +613,7 @@ async function deleteUserCompletely(username) {
     const groupsSnap = await getDocs(collection(db, "groups"));
 
     for (const groupDoc of groupsSnap.docs) {
-        const group = groupDoc.data();
-
-        if (group.members && group.members[username]) {
-            await updateDoc(doc(db, "groups", groupDoc.id), {
-                [`members.${username}`]: deleteField()
-            });
-        }
+        await removeUserFromGroupSafe(username, groupDoc.id);
     }
 
     const predictionsSnap =
@@ -602,18 +627,7 @@ async function deleteUserCompletely(username) {
 
     await deleteDoc(doc(db, "predictions", username));
 
-    const leaderboardsSnap = await getDocs(collection(db, "leaderboards"));
-
-    for (const leaderboardDoc of leaderboardsSnap.docs) {
-        const leaderboardUserRef =
-            doc(db, "leaderboards", leaderboardDoc.id, "users", username);
-
-        const leaderboardUserSnap = await getDoc(leaderboardUserRef);
-
-        if (leaderboardUserSnap.exists()) {
-            await deleteDoc(leaderboardUserRef);
-        }
-    }
+    await deleteUserFromAllLeaderboards(username);
 
     await deleteDoc(userRef);
 
@@ -656,16 +670,44 @@ async function renameUserCompletely(oldUsername, newUsername) {
     const groupsSnap = await getDocs(collection(db, "groups"));
 
     for (const groupDoc of groupsSnap.docs) {
+        const groupRef = doc(db, "groups", groupDoc.id);
         const group = groupDoc.data();
 
-        if (group.members && group.members[oldUsername]) {
-            await updateDoc(doc(db, "groups", groupDoc.id), {
-                [`members.${oldUsername}`]: deleteField(),
-                [`members.${newUsername}`]: true
-            });
+        const members = group.members ? { ...group.members } : {};
+
+        if (members[oldUsername]) {
+            delete members[oldUsername];
+            members[newUsername] = true;
+
+            const updateData = {
+                members
+            };
+
+            if (group.creator === oldUsername) {
+                updateData.creator = newUsername;
+            }
+
+            await updateDoc(groupRef, updateData);
         }
     }
 
+    await updatePredictionsUsername(oldUsername, newUsername);
+
+    await deleteUserFromAllLeaderboards(oldUsername);
+
+    await deleteDoc(oldUserRef);
+
+    await recalculateGlobalLeaderboard();
+
+    const groupsAfterSnap = await getDocs(collection(db, "groups"));
+
+    for (const groupDoc of groupsAfterSnap.docs) {
+        await recalculateGroupLeaderboard(groupDoc.id);
+    }
+}
+
+
+async function updatePredictionsUsername(oldUsername, newUsername) {
     const predictionsSnap =
         await getDocs(collection(db, "predictions", oldUsername, "matches"));
 
@@ -681,37 +723,34 @@ async function renameUserCompletely(oldUsername, newUsername) {
     }
 
     await deleteDoc(doc(db, "predictions", oldUsername));
+}
 
+
+async function deleteUserFromAllLeaderboards(username) {
     const leaderboardsSnap = await getDocs(collection(db, "leaderboards"));
 
     for (const leaderboardDoc of leaderboardsSnap.docs) {
-        const oldLeaderboardRef =
-            doc(db, "leaderboards", leaderboardDoc.id, "users", oldUsername);
+        const leaderboardUserRef =
+            doc(db, "leaderboards", leaderboardDoc.id, "users", username);
 
-        const oldLeaderboardSnap = await getDoc(oldLeaderboardRef);
+        const leaderboardUserSnap = await getDoc(leaderboardUserRef);
 
-        if (oldLeaderboardSnap.exists()) {
-            const oldLeaderboardData = oldLeaderboardSnap.data();
-
-            await setDoc(
-                doc(db, "leaderboards", leaderboardDoc.id, "users", newUsername),
-                {
-                    ...oldLeaderboardData,
-                    player: newUsername
-                }
-            );
-
-            await deleteDoc(oldLeaderboardRef);
+        if (leaderboardUserSnap.exists()) {
+            await deleteDoc(leaderboardUserRef);
         }
     }
+}
 
-    await deleteDoc(oldUserRef);
 
-    await recalculateGlobalLeaderboard();
+function safeHtmlId(value) {
+    return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
 
-    const groupsAfterSnap = await getDocs(collection(db, "groups"));
 
-    for (const groupDoc of groupsAfterSnap.docs) {
-        await recalculateGroupLeaderboard(groupDoc.id);
-    }
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
 }
