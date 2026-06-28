@@ -88,6 +88,31 @@ export async function loadPredictionPage(username, groupId = null, groupName = n
         <p>
             For matches resolved by penalties, enter the score until the end of extra time.
         </p>
+
+        <div class="scoringExplanation">
+            <h2>How scoring works</h2>
+
+            <p>Maximum score per match: <strong>4 points</strong>.</p>
+
+            <ul>
+                <li><strong>1 point</strong> for correct winner.</li>
+                <li><strong>1 point</strong> for correct number of goals by the winner.</li>
+                <li><strong>1 point</strong> for correct number of goals by the losing team.</li>
+                <li><strong>1 point</strong> for correct goal difference.</li>
+            </ul>
+
+            <p>
+                Example: Prediction Germany 4 - 2 France,
+                actual result Germany 2 - 0 France.
+                You get 1 point for correct winner and
+                1 point for correct goal difference.
+                Total: <strong>2 points</strong>.
+            </p>
+
+            <p class="smallText">
+                Goal difference is important. A 4-2 prediction and a 2-0 result both have a goal difference of 2.
+            </p>
+        </div>
     `;
 
     matches.forEach(match => {
