@@ -8,6 +8,11 @@ import {
 }
 from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
 
+import {
+    groupNameExists
+}
+from "./groups.js";
+
 
 async function hashPassword(password) {
     const encoder = new TextEncoder();
@@ -35,6 +40,11 @@ export async function signUp(username, password) {
 
     if (!isValidPassword(password)) {
         alert("Please enter a 5-digit numerical password.");
+        return false;
+    }
+
+    if (await groupNameExists(username)) {
+        alert("This username is already used as a group name. Please choose another username.");
         return false;
     }
 
@@ -89,7 +99,6 @@ export async function login(username, password) {
     const userData = userSnap.data();
     const passwordHash = await hashPassword(password);
 
-    // Migration for old users created before password support
     if (!userData.passwordHash) {
         await updateDoc(userRef, {
             passwordHash

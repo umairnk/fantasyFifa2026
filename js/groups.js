@@ -20,6 +20,28 @@ function generateJoinCode() {
 }
 
 
+export async function groupNameExists(groupName) {
+    const targetName = groupName.trim().toLowerCase();
+
+    const snapshot = await getDocs(collection(db, "groups"));
+
+    let exists = false;
+
+    snapshot.forEach(groupDoc => {
+        const group = groupDoc.data();
+
+        if (
+            group.groupName &&
+            group.groupName.trim().toLowerCase() === targetName
+        ) {
+            exists = true;
+        }
+    });
+
+    return exists;
+}
+
+
 export async function createGroup(groupName, creator) {
     groupName = groupName.trim();
 
@@ -28,10 +50,16 @@ export async function createGroup(groupName, creator) {
         return;
     }
 
+    if (await groupNameExists(groupName)) {
+        alert("A group with this name already exists.");
+        return;
+    }
+
     const joinCode = generateJoinCode();
 
     const groupRef = await addDoc(collection(db, "groups"), {
         groupName,
+        groupNameLower: groupName.toLowerCase(),
         creator,
         joinCode,
         createdAt: new Date().toISOString(),
@@ -46,7 +74,7 @@ export async function createGroup(groupName, creator) {
 
     alert(`Group created.\nJoin Code: ${joinCode}`);
 
-    loadGroups();
+    loadGroups(creator);
 }
 
 
@@ -88,19 +116,27 @@ export async function joinGroup(joinCode, username) {
 
     alert(`You joined: ${group.groupName}`);
 
-    loadGroups();
+    loadGroups(username);
 }
 
 
-export async function loadGroups() {
+export async function loadGroups(username) {
     const groupsContainer = document.getElementById("groupsContainer");
     groupsContainer.innerHTML = "";
 
     const q = query(collection(db, "groups"), orderBy("groupName"));
     const snapshot = await getDocs(q);
 
+    let visibleGroups = 0;
+
     snapshot.forEach(groupDoc => {
         const group = groupDoc.data();
+
+        if (!group.members || !group.members[username]) {
+            return;
+        }
+
+        visibleGroups++;
 
         groupsContainer.innerHTML += `
             <div class="groupCard">
@@ -119,6 +155,14 @@ export async function loadGroups() {
             </div>
         `;
     });
+
+    if (visibleGroups === 0) {
+        groupsContainer.innerHTML = `
+            <p class="smallText">
+                You have not joined any group yet. Enter a join code above to join a group.
+            </p>
+        `;
+    }
 }
 
 

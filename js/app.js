@@ -60,7 +60,7 @@ async function startApp() {
 
 function openHomePage() {
     showPage("homePage");
-    loadGroups();
+    loadGroups(getCurrentUser());
 }
 
 
