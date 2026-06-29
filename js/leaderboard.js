@@ -82,7 +82,7 @@ async function recalculateLeaderboard(leaderboardId, groupId) {
     }
 
     if (groupId) {
-        calculateIndividualWins(leaderboard, players, matches);
+        await calculateIndividualWins(leaderboard, players, matches);
     }
 
     const rows = sortLeaderboard(Object.values(leaderboard));
@@ -98,12 +98,58 @@ async function recalculateLeaderboard(leaderboardId, groupId) {
 }
 
 
-function calculateIndividualWins(leaderboard, players, matches) {
-    players.forEach(player => {
-        if (!leaderboard[player].individualWins) {
-            leaderboard[player].individualWins = 0;
+async function calculateIndividualWins(leaderboard, players, matches) {
+    for (const matchId of Object.keys(matches)) {
+        const match = matches[matchId];
+
+        if (
+            match.status !== "finished" ||
+            match.homeGoals === null ||
+            match.awayGoals === null ||
+            match.homeGoals === undefined ||
+            match.awayGoals === undefined ||
+            !match.winner
+        ) {
+            continue;
         }
-    });
+
+        let bestPoints = -1;
+        const matchScores = [];
+
+        for (const player of players) {
+            const predictionsSnap =
+                await getDocs(collection(db, "predictions", player, "matches"));
+
+            let prediction = null;
+
+            predictionsSnap.forEach(predictionDoc => {
+                if (predictionDoc.id === matchId) {
+                    prediction = predictionDoc.data();
+                }
+            });
+
+            if (!prediction) continue;
+
+            const points = calculatePoints(prediction, match);
+
+            if (points === null) continue;
+
+            matchScores.push({
+                player,
+                points
+            });
+
+            if (points > bestPoints) {
+                bestPoints = points;
+            }
+        }
+
+        matchScores.forEach(score => {
+            if (score.points === bestPoints && bestPoints >= 0) {
+                leaderboard[score.player].individualWins += 1;
+            }
+        });
+    }
 }
 
 
@@ -170,27 +216,30 @@ async function loadLeaderboardPage(config) {
     `;
 
     document
-        .getElementById("recalculateLeaderboardBtn")
-        .addEventListener("click", async () => {
-            let rows;
+    .getElementById("recalculateLeaderboardBtn")
+    .addEventListener("click", async () => {
 
-            if (config.groupId) {
-                rows = await recalculateGroupLeaderboard(config.groupId);
-            } else {
-                rows = await recalculateGlobalLeaderboard();
-            }
+        alert("The leaderboards are being calculated, please wait.");
 
-            rows = sortLeaderboard(rows);
+        let rows;
 
-            renderLeaderboard(
-                config.isGlobal ? rows.slice(0, 10) : rows,
-                config.showWins,
-                config.isGlobal,
-                rows.length
-            );
+        if (config.groupId) {
+            rows = await recalculateGroupLeaderboard(config.groupId);
+        } else {
+            rows = await recalculateGlobalLeaderboard();
+        }
 
-            alert("Leaderboard recalculated.");
-        });
+        rows = sortLeaderboard(rows);
+
+        renderLeaderboard(
+            config.isGlobal ? rows.slice(0, 10) : rows,
+            config.showWins,
+            config.isGlobal,
+            rows.length
+        );
+
+        alert("Leaderboards are updated.");
+    });
 
     const snap =
         await getDocs(

@@ -542,6 +542,8 @@ function attachMatchAdminEvents() {
                 updatedAt: new Date().toISOString()
             });
 
+            alert("The leaderboards are being calculated, please wait.");
+
             await recalculateGlobalLeaderboard();
 
             const groupsSnap = await getDocs(collection(db, "groups"));
@@ -550,7 +552,8 @@ function attachMatchAdminEvents() {
                 await recalculateGroupLeaderboard(groupDoc.id);
             }
 
-            alert(`${matchId} saved and all leaderboards recalculated.`);
+            alert("Leaderboards are updated.");
+
             await reloadAdminPage();
         });
     });

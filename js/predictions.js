@@ -209,13 +209,21 @@ async function showSubmittedPredictions(username, groupId, groupName) {
             </p>
         `}
 
+        <div id="comparisonSection"></div>
+
+        <hr>
+
         ${renderMyPredictionsTable(matches, matchesMap, myPredictions)}
 
-        <div id="comparisonSection"></div>
+        <div id="predictionsOverlapSection"></div>
     `;
 
     if (groupId) {
         await renderComparePlayers(username, groupId);
+    }
+
+    if (groupId) {
+        await renderPredictionsOverlap(groupId);
     }
 }
 
@@ -308,7 +316,11 @@ async function renderComparePlayers(currentUsername, groupId) {
     comparisonSection.innerHTML = `
         <hr>
 
-        <h2>Compare With</h2>
+        <h2>👥 Prediction Comparison</h2>
+
+        <p class="smallText">
+            Select a group member to compare predictions match by match.
+        </p>
 
         <div class="comparePlayers">
             ${members.map(member => `
@@ -855,4 +867,191 @@ function getRankDisplay(index) {
     if (index === 1) return "🥈";
     if (index === 2) return "🥉";
     return index + 1;
+}
+
+
+async function renderPredictionsOverlap(groupId) {
+    const container = document.getElementById("predictionsOverlapSection");
+
+    container.innerHTML = `
+        <hr>
+
+        <h2>🔁 Predictions Overlap</h2>
+
+        <p class="smallText">
+            This shows how similar each player's predictions are to every other player in this group.
+        </p>
+
+        <button id="recalculatePredictionsOverlapBtn" class="bigButton">
+            Recalculate Predictions Overlap
+        </button>
+
+        <div id="predictionsOverlapTable"></div>
+    `;
+
+    document
+        .getElementById("recalculatePredictionsOverlapBtn")
+        .addEventListener("click", async () => {
+            alert("Predictions overlap is being calculated, please wait.");
+
+            const overlapData =
+                await calculateAndSavePredictionsOverlap(groupId);
+
+            renderPredictionsOverlapTable(overlapData);
+
+            alert("Predictions overlap is updated.");
+        });
+
+    const overlapSnap =
+        await getDoc(doc(db, "predictionsOverlap", groupId));
+
+    if (overlapSnap.exists()) {
+        renderPredictionsOverlapTable(overlapSnap.data());
+    } else {
+        document.getElementById("predictionsOverlapTable").innerHTML = `
+            <p class="smallText">
+                Predictions overlap has not been calculated yet.
+            </p>
+        `;
+    }
+}
+
+
+async function calculateAndSavePredictionsOverlap(groupId) {
+    const group = await getGroup(groupId);
+
+    if (!group || !group.members) {
+        return {
+            players: [],
+            matrix: {},
+            totalMatches: 0
+        };
+    }
+
+    const players = Object.keys(group.members).sort();
+    const matches = await getRound32Matches();
+
+    const allPredictions = {};
+
+    for (const player of players) {
+        allPredictions[player] = await getUserPredictions(player);
+    }
+
+    const matrix = {};
+
+    for (const rowPlayer of players) {
+        matrix[rowPlayer] = {};
+
+        for (const columnPlayer of players) {
+            let similarity = 0;
+
+            for (const match of matches) {
+                const rowPrediction =
+                    allPredictions[rowPlayer][match.id];
+
+                const columnPrediction =
+                    allPredictions[columnPlayer][match.id];
+
+                if (!rowPrediction || !columnPrediction) {
+                    continue;
+                }
+
+                if (rowPrediction.winner === columnPrediction.winner) {
+                    similarity += 1;
+                }
+
+                if (rowPrediction.homeGoals === columnPrediction.homeGoals) {
+                    similarity += 1;
+                }
+
+                if (rowPrediction.awayGoals === columnPrediction.awayGoals) {
+                    similarity += 1;
+                }
+
+                const rowGoalDifference =
+                    rowPrediction.homeGoals - rowPrediction.awayGoals;
+
+                const columnGoalDifference =
+                    columnPrediction.homeGoals - columnPrediction.awayGoals;
+
+                if (rowGoalDifference === columnGoalDifference) {
+                    similarity += 1;
+                }
+            }
+
+            const totalComparisons = matches.length * 4;
+
+            matrix[rowPlayer][columnPlayer] =
+                totalComparisons === 0
+                    ? 0
+                    : Math.round((similarity / totalComparisons) * 100);
+        }
+    }
+
+    const overlapData = {
+        players,
+        matrix,
+        totalMatches: matches.length,
+        updatedAt: new Date().toISOString()
+    };
+
+    await setDoc(
+        doc(db, "predictionsOverlap", groupId),
+        overlapData
+    );
+
+    return overlapData;
+}
+
+
+function renderPredictionsOverlapTable(overlapData) {
+    const container =
+        document.getElementById("predictionsOverlapTable");
+
+    if (!overlapData.players || overlapData.players.length === 0) {
+        container.innerHTML = `
+            <p>No overlap data available.</p>
+        `;
+        return;
+    }
+
+    const players = overlapData.players;
+
+    container.innerHTML = `
+        <div class="leaderboardWrapper">
+            <table class="leaderboardTable">
+                <thead>
+                    <tr>
+                        <th>Player</th>
+                        ${players.map(player => `
+                            <th>${player}</th>
+                        `).join("")}
+                    </tr>
+                </thead>
+
+                <tbody>
+                    ${players.map(rowPlayer => `
+                        <tr>
+                            <td class="playerColumn">
+                                👤 <strong>${rowPlayer}</strong>
+                            </td>
+
+                            ${players.map(columnPlayer => `
+                                <td>
+                                    <strong>
+                                        ${overlapData.matrix[rowPlayer][columnPlayer]}%
+                                    </strong>
+                                </td>
+                            `).join("")}
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        </div>
+
+        <p class="smallText">
+            Based on ${overlapData.totalMatches} matches.
+            Each match compares winner, Team A goals, Team B goals, and signed goal difference.
+        </p>
+    `;
 }
