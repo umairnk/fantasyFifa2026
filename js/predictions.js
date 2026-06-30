@@ -213,7 +213,7 @@ async function showSubmittedPredictions(username, groupId, groupName) {
 
         <hr>
 
-        ${renderMyPredictionsTable(matches, matchesMap, myPredictions)}
+        
 
         <div id="predictionsOverlapSection"></div>
     `;
@@ -300,18 +300,13 @@ async function renderComparePlayers(currentUsername, groupId) {
         return;
     }
 
+    const allMembers =
+        Object.keys(group.members).sort();
+
     const members =
-        Object.keys(group.members)
+        allMembers
             .filter(member => member !== currentUsername)
             .sort();
-
-    if (members.length === 0) {
-        comparisonSection.innerHTML = `
-            <h2>Compare With</h2>
-            <p>No other members in this group yet.</p>
-        `;
-        return;
-    }
 
     comparisonSection.innerHTML = `
         <hr>
@@ -322,16 +317,34 @@ async function renderComparePlayers(currentUsername, groupId) {
             Select a group member to compare predictions match by match.
         </p>
 
-        <div class="comparePlayers">
-            ${members.map(member => `
-                <button class="comparePlayerBtn"
-                        data-player="${member}">
-                    👤 ${member}
-                </button>
-            `).join("")}
-        </div>
+        ${
+            members.length === 0
+            ? `
+                <p>No other members in this group yet.</p>
+            `
+            : `
+                <div class="comparePlayers">
+                    ${members.map(member => `
+                        <button class="comparePlayerBtn"
+                                data-player="${member}">
+                            👤 ${member}
+                        </button>
+                    `).join("")}
+                </div>
+            `
+        }
 
         <div id="headToHeadContainer"></div>
+
+        <hr>
+
+        <h2>📋 Group Prediction Table</h2>
+
+        <p class="smallText">
+            This table shows the prediction of the logged-in user first, then all other group members in alphabetical order.
+        </p>
+
+        <div id="groupPredictionTableContainer"></div>
     `;
 
     document.querySelectorAll(".comparePlayerBtn").forEach(button => {
@@ -345,6 +358,194 @@ async function renderComparePlayers(currentUsername, groupId) {
             );
         });
     });
+
+    await renderGroupPredictionTable(
+        currentUsername,
+        allMembers
+    );
+}
+
+
+async function renderGroupPredictionTable(currentUsername, allMembers) {
+    const container =
+        document.getElementById("groupPredictionTableContainer");
+
+    const matches = await getRound32Matches();
+    const matchesMap = await getAllMatchesMap();
+
+    const orderedPlayers = [
+        currentUsername,
+        ...allMembers
+            .filter(member => member !== currentUsername)
+            .sort()
+    ];
+
+    const allPredictions = {};
+
+    for (const player of orderedPlayers) {
+        allPredictions[player] = await getUserPredictions(player);
+    }
+
+    container.innerHTML = `
+        <style>
+            #groupPredictionTableContainer .groupPredictionWrapper {
+                max-height: 80vh;
+                overflow: auto;
+            }
+
+            #groupPredictionTableContainer .groupPredictionTable thead th {
+                position: sticky;
+                top: 0;
+                z-index: 10;
+            }
+
+            #groupPredictionTableContainer .gameNumber {
+                font-weight: bold;
+                color: darkgreen;
+                margin-bottom: 6px;
+            }
+        </style>
+
+        <div class="leaderboardWrapper groupPredictionWrapper">
+            <table class="leaderboardTable groupPredictionTable">
+                <thead>
+                    <tr>
+                        <th>Match</th>
+
+                        ${orderedPlayers.map((player, index) => `
+                            <th>
+                                ${index === 0 ? "You" : player}
+                            </th>
+                        `).join("")}
+                    </tr>
+                </thead>
+
+                <tbody>
+                    ${matches.map((match, index) => {
+                        const result = matchesMap[match.id];
+
+                        return `
+                            <tr>
+                                <td class="predictionMatchInfo">
+                                    ${renderMatchInfoCell(match, result, index + 1)}
+                                </td>
+
+                                ${orderedPlayers.map(player => `
+                                    <td>
+                                        ${renderPlayerPredictionCell(
+                                            allPredictions[player][match.id],
+                                            result
+                                        )}
+                                    </td>
+                                `).join("")}
+                            </tr>
+                        `;
+                    }).join("")}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+
+function renderMatchInfoCell(match, result, gameNumber) {
+    return `
+        <div class="gameNumber">
+            Round of 32: Game ${gameNumber}
+        </div>
+
+        <strong>${match.homeTeam} vs ${match.awayTeam}</strong>
+
+        <br>
+
+        <span class="smallText">
+            ${formatGermanMatchTime(match.startTime)}
+        </span>
+
+        <br>
+
+        <span>
+            Winner:
+            <strong>
+                ${
+                    result &&
+                    result.status === "finished" &&
+                    result.winner
+                    ? result.winner
+                    : "Not decided"
+                }
+            </strong>
+        </span>
+
+        ${
+            result &&
+            result.status === "finished" &&
+            result.homeGoals !== null &&
+            result.awayGoals !== null &&
+            result.homeGoals !== undefined &&
+            result.awayGoals !== undefined
+            ? `
+                <br>
+                <span>
+                    Result:
+                    <strong>
+                        ${result.homeGoals} - ${result.awayGoals}
+                    </strong>
+                </span>
+              `
+            : ""
+        }
+    `;
+}
+
+
+function renderPlayerPredictionCell(prediction, result) {
+    if (!prediction) {
+        return `
+            <span class="smallText">No prediction</span>
+        `;
+    }
+
+    const points = calculatePoints(prediction, result);
+
+    return `
+        <strong>
+            ${prediction.homeGoals} - ${prediction.awayGoals}
+        </strong>
+
+        <br>
+
+        <span>
+            Winner:
+            <strong>${prediction.winner}</strong>
+        </span>
+
+        ${
+            points === null
+            ? ""
+            : `
+                <br>
+                <span>${renderStars(points)}</span>
+              `
+        }
+    `;
+}
+
+
+function formatGermanMatchTime(startTime) {
+    if (!startTime) return "Time not set";
+
+    const date = new Date(startTime);
+
+    return date.toLocaleString("de-DE", {
+        timeZone: "Europe/Berlin",
+        weekday: "short",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+    }) + " Uhr";
 }
 
 

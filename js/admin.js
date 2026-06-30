@@ -51,20 +51,21 @@ export async function loadAdminPage(username = null) {
         container.innerHTML = `
             <h2>Admin Area</h2>
 
-            <h2>User Management</h2>
+            <h2>⚽ Match Editor</h2>
+            <div id="adminMatchesContainer"></div>
+
+            <hr>
+
+            <h2>👥 User Management</h2>
             <div id="adminUsersContainer"></div>
 
             <hr>
 
-            <h2>Group Management</h2>
+            <h2>🏆 Group Management</h2>
             <div id="adminGroupsContainer"></div>
-
-            <hr>
-
-            <h2>Admin Match Editor</h2>
-            <div id="adminMatchesContainer"></div>
         `;
 
+        
         await loadAdminUsers();
         await loadAdminGroups();
         await loadAdminMatches();
