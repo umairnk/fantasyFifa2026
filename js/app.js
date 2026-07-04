@@ -40,6 +40,11 @@ import {
 }
 from "./ui.js";
 
+import {
+    loadInsightsPage
+}
+from "./insights.js";
+
 
 async function startApp() {
     const username = getCurrentUser();
@@ -120,6 +125,15 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
     }
 });
 
+
+document.getElementById("insightsBtn").addEventListener("click", () => {
+    showPage("insightsPage");
+
+    loadInsightsPage(
+        localStorage.getItem("currentGroupId"),
+        localStorage.getItem("currentGroupName")
+    );
+});
 
 document.getElementById("logoutBtn").addEventListener("click", () => {
     logout();

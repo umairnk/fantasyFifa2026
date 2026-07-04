@@ -3,6 +3,7 @@ export function showPage(pageId) {
         "homePage",
         "predictionsPage",
         "adminPage",
+        "insightsPage",
         "leaderboardPage"
     ];
 

@@ -595,3 +595,29 @@ input {
     opacity: 0.45;
     cursor: not-allowed;
 }
+
+.insightsLegend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+    justify-content: center;
+}
+
+.insightsLegendItem {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: bold;
+    background: #f5f5f5;
+    padding: 6px 10px;
+    border-radius: 20px;
+}
+
+.insightsLegendColor {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    display: inline-block;
+}
