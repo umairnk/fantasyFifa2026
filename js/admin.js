@@ -19,7 +19,7 @@ import {
 }
 from "./leaderboard.js";
 
-
+setDoc
 let currentAdminUsername = null;
 let currentUserIsFullAdmin = false;
 
@@ -40,7 +40,6 @@ export async function canUpdateResults(username) {
     return data.isAdmin === true || data.canUpdateResults === true;
 }
 
-
 export async function loadAdminPage(username = null) {
     currentAdminUsername = username;
     currentUserIsFullAdmin = username ? await isAdmin(username) : false;
@@ -50,6 +49,25 @@ export async function loadAdminPage(username = null) {
     if (currentUserIsFullAdmin) {
         container.innerHTML = `
             <h2>Admin Area</h2>
+
+            <div class="adminMatchCard">
+                <h3>Prediction Display Control</h3>
+
+                <p class="smallText">
+                    Enable this only after the prediction deadline has passed.
+                </p>
+
+                <button id="enableRound16DisplayBtn" class="bigButton">
+                    Enable Round of 16 Predictions Display
+                </button>
+            </div>
+
+            <div class="adminMatchCard">
+                <h3>Prediction Submission Status</h3>
+                <div id="predictionStatusContainer"></div>
+            </div>
+
+            <hr>
 
             <h2>⚽ Match Editor</h2>
             <div id="adminMatchesContainer"></div>
@@ -65,10 +83,13 @@ export async function loadAdminPage(username = null) {
             <div id="adminGroupsContainer"></div>
         `;
 
-        
+        attachPredictionDisplayButton();
+
+        await loadPredictionStatusPanel();
+        await loadAdminMatches();
         await loadAdminUsers();
         await loadAdminGroups();
-        await loadAdminMatches();
+
         return;
     }
 
@@ -79,9 +100,31 @@ export async function loadAdminPage(username = null) {
             You can update match scores, winner and status only.
         </p>
 
+        <div class="adminMatchCard">
+            <h3>Prediction Display Control</h3>
+
+            <p class="smallText">
+                Enable this only after the prediction deadline has passed.
+            </p>
+
+            <button id="enableRound16DisplayBtn" class="bigButton">
+                Enable Round of 16 Predictions Display
+            </button>
+        </div>
+
+        <div class="adminMatchCard">
+            <h3>Prediction Submission Status</h3>
+            <div id="predictionStatusContainer"></div>
+        </div>
+
+        <hr>
+
         <div id="adminMatchesContainer"></div>
     `;
 
+    attachPredictionDisplayButton();
+
+    await loadPredictionStatusPanel();
     await loadAdminMatches();
 }
 
@@ -757,4 +800,139 @@ function escapeHtml(value) {
         .replaceAll('"', "&quot;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;");
+}
+
+async function enablePredictionsDisplay(round) {
+    const settingsRef = doc(db, "settings", "tournament");
+    const settingsSnap = await getDoc(settingsRef);
+
+    const currentSettings = settingsSnap.exists()
+        ? settingsSnap.data()
+        : {};
+
+    const currentDisplayPredictions =
+        currentSettings.displayPredictions || {};
+
+    await setDoc(settingsRef, {
+        ...currentSettings,
+        displayPredictions: {
+            ...currentDisplayPredictions,
+            [round]: true
+        }
+    }, { merge: true });
+
+    alert(`${round} predictions are now visible to everyone.`);
+}
+
+function attachPredictionDisplayButton() {
+    const button = document.getElementById("enableRound16DisplayBtn");
+
+    if (!button) return;
+
+    button.addEventListener("click", async () => {
+        const confirmEnable = confirm(
+            "Enable Round of 16 predictions display for everyone?"
+        );
+
+        if (!confirmEnable) return;
+
+        await enablePredictionsDisplay("RoundOf16");
+    });
+}
+
+async function loadPredictionStatusPanel() {
+    const container = document.getElementById("predictionStatusContainer");
+
+    if (!container) return;
+
+    const settingsSnap = await getDoc(doc(db, "settings", "tournament"));
+
+    const activeRound =
+        settingsSnap.exists()
+            ? settingsSnap.data().activePredictionRound || "RoundOf16"
+            : "RoundOf16";
+
+    const submittedField =
+        activeRound === "RoundOf32" ? "predictionsSubmittedRound32" :
+        activeRound === "RoundOf16" ? "predictionsSubmittedRound16" :
+        activeRound === "QF" ? "predictionsSubmittedQF" :
+        activeRound === "SF" ? "predictionsSubmittedSF" :
+        activeRound === "F" ? "predictionsSubmittedF" :
+        "predictionsSubmittedRound16";
+
+    const usersSnap = await getDocs(collection(db, "users"));
+
+    const users = [];
+
+    usersSnap.forEach(userDoc => {
+        const data = userDoc.data();
+
+        users.push({
+            username: userDoc.id,
+            submitted: data[submittedField] === true
+        });
+    });
+
+    users.sort((a, b) => a.username.localeCompare(b.username));
+
+    const submittedCount =
+        users.filter(user => user.submitted).length;
+
+    const totalCount = users.length;
+
+    const complete =
+        totalCount > 0 && submittedCount === totalCount;
+
+    container.innerHTML = `
+        <h3>${formatRoundName(activeRound)} Prediction Status</h3>
+
+        <p>
+            <strong>${submittedCount} / ${totalCount}</strong>
+            submitted
+        </p>
+
+        <p class="${complete ? "successText" : "warningText"}">
+            ${
+                complete
+                ? "Prediction phase complete."
+                : "Prediction phase not complete yet."
+            }
+        </p>
+
+        <div class="predictionStatusWrapper">
+            <table class="predictionStatusTable">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    ${users.map(user => `
+                        <tr>
+                            <td>👤 <strong>${user.username}</strong></td>
+                            <td>
+                                ${
+                                    user.submitted
+                                    ? "✅ Submitted"
+                                    : "❌ Not submitted"
+                                }
+                            </td>
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function formatRoundName(round) {
+    if (round === "RoundOf32") return "Round of 32";
+    if (round === "RoundOf16") return "Round of 16";
+    if (round === "QF") return "Quarter Final";
+    if (round === "SF") return "Semi Final";
+    if (round === "F") return "Final";
+
+    return round;
 }

@@ -1,5 +1,6 @@
 import { db } from "./firebase.js";
 import { round32Matches } from "./defaultMatches.js";
+import { round16Matches } from "./round16Matches.js";
 
 import {
     doc,
@@ -23,17 +24,40 @@ from "./groups.js";
 
 
 let predictions = {};
+let hasUnsavedPredictionChanges = false;
+let predictionNavigationWarningAttached = false;
+let predictionNavButtonHandlers = [];
+
+const PREDICTION_ROUNDS = [
+    "RoundOf32",
+    "RoundOf16",
+    "QF",
+    "SF",
+    "F"
+];
+
+const OVERLAP_ROUNDS = [
+    "All",
+    ...PREDICTION_ROUNDS
+];
+
 
 
 export async function initializeMatches() {
-    for (const match of round32Matches) {
+    await initializeMatchRound(round32Matches, "RoundOf32");
+    await initializeMatchRound(round16Matches, "RoundOf16");
+}
+
+
+async function initializeMatchRound(matchesArray, roundName) {
+    for (const match of matchesArray) {
         const matchRef = doc(db, "matches", match.id);
         const snap = await getDoc(matchRef);
 
         if (!snap.exists()) {
             await setDoc(matchRef, {
                 id: match.id,
-                round: "RoundOf32",
+                round: roundName,
                 homeTeam: match.homeTeam,
                 awayTeam: match.awayTeam,
                 startTime: match.startTime || null,
@@ -46,7 +70,7 @@ export async function initializeMatches() {
         } else {
             await setDoc(matchRef, {
                 id: match.id,
-                round: "RoundOf32",
+                round: roundName,
                 homeTeam: match.homeTeam,
                 awayTeam: match.awayTeam,
                 startTime: match.startTime || null,
@@ -56,10 +80,12 @@ export async function initializeMatches() {
     }
 }
 
-
 export async function loadPredictionPage(username, groupId = null, groupName = null) {
     const container = document.getElementById("predictionsContainer");
     container.innerHTML = "";
+    disablePredictionLeaveWarning();
+    hasUnsavedPredictionChanges = false;
+    predictions = {};
 
     const userRef = doc(db, "users", username);
     const userSnap = await getDoc(userRef);
@@ -71,15 +97,20 @@ export async function loadPredictionPage(username, groupId = null, groupName = n
 
     const userData = userSnap.data();
 
-    if (userData.predictionsSubmittedRound32) {
-        await showSubmittedPredictions(username, groupId, groupName);
+    const settings = await getTournamentSettings();
+    const activeRound = settings.activePredictionRound || "RoundOf16";
+    const submittedField = getSubmittedFieldForRound(activeRound);
+
+    if (userData[submittedField]) {
+        await showSubmittedPredictions(username, groupId, groupName, activeRound);
         return;
     }
 
-    const matches = await getRound32Matches();
+    const matches = await getMatchesForRound(activeRound);
+    const roundTitle = getRoundTitle(activeRound);
 
     container.innerHTML = `
-        <h2>Round of 32 Predictions</h2>
+        <h2>${roundTitle} Predictions</h2>
 
         <p class="warningText">
             Once submitted, predictions cannot be edited.
@@ -117,9 +148,9 @@ export async function loadPredictionPage(username, groupId = null, groupName = n
 
     matches.forEach(match => {
         predictions[match.id] = {
-            homeGoals: 0,
-            awayGoals: 0,
-            winner: match.homeTeam
+            homeGoals: null,
+            awayGoals: null,
+            winner: null
         };
 
         container.innerHTML += createMatchCard(match);
@@ -132,6 +163,7 @@ export async function loadPredictionPage(username, groupId = null, groupName = n
     `;
 
     attachPredictionEvents(matches);
+    setupPredictionLeaveWarning();
 
     document
         .getElementById("submitPredictionsBtn")
@@ -158,6 +190,22 @@ async function getRound32Matches() {
     return matches;
 }
 
+async function getMatchesForRound(round) {
+    const matchesSnap = await getDocs(collection(db, "matches"));
+    const matches = [];
+
+    matchesSnap.forEach(docSnap => {
+        const match = docSnap.data();
+
+        if (match.round === round) {
+            matches.push(match);
+        }
+    });
+
+    matches.sort((a, b) => a.id.localeCompare(b.id));
+
+    return matches;
+}
 
 async function getAllMatchesMap() {
     const matchesSnap = await getDocs(collection(db, "matches"));
@@ -184,13 +232,110 @@ async function getUserPredictions(username) {
     return predictionsMap;
 }
 
+async function getTournamentSettings() {
+    const snap = await getDoc(doc(db, "settings", "tournament"));
 
-async function showSubmittedPredictions(username, groupId, groupName) {
+    if (!snap.exists()) {
+        return {
+            activePredictionRound: "RoundOf16",
+            displayPredictions: {
+                RoundOf32: true,
+                RoundOf16: false,
+                QF: false,
+                SF: false,
+                F: false
+            }
+        };
+    }
+
+    return snap.data();
+}
+
+
+function getSubmittedFieldForRound(round) {
+    if (round === "RoundOf32") return "predictionsSubmittedRound32";
+    if (round === "RoundOf16") return "predictionsSubmittedRound16";
+    if (round === "QF") return "predictionsSubmittedQF";
+    if (round === "SF") return "predictionsSubmittedSF";
+    if (round === "F") return "predictionsSubmittedF";
+
+    return "predictionsSubmittedRound16";
+}
+
+
+function getRoundTitle(round) {
+    if (round === "RoundOf32") return "Round of 32";
+    if (round === "RoundOf16") return "Round of 16";
+    if (round === "QF") return "Quarter Final";
+    if (round === "SF") return "Semi Final";
+    if (round === "F") return "Final";
+
+    return round;
+}
+
+
+function getRoundDropdownOptions(selectedRound, includeAll = false) {
+    const rounds = includeAll ? OVERLAP_ROUNDS : PREDICTION_ROUNDS;
+
+    return rounds.map(round => `
+        <option value="${round}" ${round === selectedRound ? "selected" : ""}>
+            ${round === "All" ? "All predicted matches" : getRoundTitle(round)}
+        </option>
+    `).join("");
+}
+
+
+function isPredictionDisplayEnabled(settings, round) {
+    if (round === "All") return true;
+
+    const displayPredictions = settings.displayPredictions || {};
+
+    return displayPredictions[round] === true;
+}
+
+
+function getDefaultPredictionTableRound(activeRound) {
+    if (PREDICTION_ROUNDS.includes(activeRound)) {
+        return activeRound;
+    }
+
+    return "RoundOf16";
+}
+
+
+function getRoundLabelForGame(round, gameNumber) {
+    return `${getRoundTitle(round)}: Game ${gameNumber}`;
+}
+
+
+async function showSubmittedPredictions(username, groupId, groupName, activeRound = "RoundOf16") {
     const container = document.getElementById("predictionsContainer");
 
-    const matches = await getRound32Matches();
+    const settings = await getTournamentSettings();
+    const displayEnabled = isPredictionDisplayEnabled(settings, activeRound);
+    const matches = await getMatchesForRound(activeRound);
     const matchesMap = await getAllMatchesMap();
     const myPredictions = await getUserPredictions(username);
+    const roundTitle = getRoundTitle(activeRound);
+
+    if (!displayEnabled) {
+        container.innerHTML = `
+            <h2>Your Submitted ${roundTitle} Predictions</h2>
+
+            <p class="warningText">
+                Predictions are locked and cannot be edited.
+            </p>
+
+            <p class="warningText">
+                Other players' ${roundTitle} predictions are not visible yet.
+                The admin must enable prediction display first.
+            </p>
+
+            ${renderMyPredictionsTable(matches, matchesMap, myPredictions)}
+        `;
+
+        return;
+    }
 
     container.innerHTML = `
         <h2>Your Submitted Predictions</h2>
@@ -213,20 +358,14 @@ async function showSubmittedPredictions(username, groupId, groupName) {
 
         <hr>
 
-        
-
         <div id="predictionsOverlapSection"></div>
     `;
 
     if (groupId) {
-        await renderComparePlayers(username, groupId);
-    }
-
-    if (groupId) {
-        await renderPredictionsOverlap(groupId);
+        await renderComparePlayers(username, groupId, activeRound);
+        await renderPredictionsOverlap(groupId, activeRound);
     }
 }
-
 
 function renderMyPredictionsTable(matches, matchesMap, myPredictions) {
     return `
@@ -287,7 +426,7 @@ function renderMyPredictionsTable(matches, matchesMap, myPredictions) {
 }
 
 
-async function renderComparePlayers(currentUsername, groupId) {
+async function renderComparePlayers(currentUsername, groupId, activeRound = "RoundOf16") {
     const comparisonSection =
         document.getElementById("comparisonSection");
 
@@ -307,6 +446,9 @@ async function renderComparePlayers(currentUsername, groupId) {
         allMembers
             .filter(member => member !== currentUsername)
             .sort();
+
+    const defaultRound =
+        getDefaultPredictionTableRound(activeRound);
 
     comparisonSection.innerHTML = `
         <hr>
@@ -341,8 +483,18 @@ async function renderComparePlayers(currentUsername, groupId) {
         <h2>📋 Group Prediction Table</h2>
 
         <p class="smallText">
-            This table shows the prediction of the logged-in user first, then all other group members in alphabetical order.
+            This table shows the selected round. The logged-in user is shown first, then all other group members in alphabetical order.
         </p>
+
+        <div class="adminMatchCard">
+            <label for="groupPredictionRoundSelect">
+                <strong>Select round:</strong>
+            </label>
+
+            <select id="groupPredictionRoundSelect">
+                ${getRoundDropdownOptions(defaultRound, false)}
+            </select>
+        </div>
 
         <div id="groupPredictionTableContainer"></div>
     `;
@@ -350,28 +502,62 @@ async function renderComparePlayers(currentUsername, groupId) {
     document.querySelectorAll(".comparePlayerBtn").forEach(button => {
         button.addEventListener("click", async () => {
             const selectedPlayer = button.dataset.player;
+            const selectedRound =
+                document.getElementById("groupPredictionRoundSelect").value;
 
             await renderHeadToHeadComparison(
                 currentUsername,
                 selectedPlayer,
-                groupId
+                groupId,
+                selectedRound
             );
         });
     });
 
+    document
+        .getElementById("groupPredictionRoundSelect")
+        .addEventListener("change", async event => {
+            await renderGroupPredictionTable(
+                currentUsername,
+                allMembers,
+                event.target.value
+            );
+        });
+
     await renderGroupPredictionTable(
         currentUsername,
-        allMembers
+        allMembers,
+        defaultRound
     );
 }
 
-
-async function renderGroupPredictionTable(currentUsername, allMembers) {
+async function renderGroupPredictionTable(currentUsername, allMembers, selectedRound = "RoundOf16") {
     const container =
         document.getElementById("groupPredictionTableContainer");
 
-    const matches = await getRound32Matches();
+    const settings = await getTournamentSettings();
+
+    if (!isPredictionDisplayEnabled(settings, selectedRound)) {
+        container.innerHTML = `
+            <p class="warningText">
+                ${getRoundTitle(selectedRound)} predictions are not visible yet.
+                The admin must enable prediction display first.
+            </p>
+        `;
+        return;
+    }
+
+    const matches = await getMatchesForRound(selectedRound);
     const matchesMap = await getAllMatchesMap();
+
+    if (matches.length === 0) {
+        container.innerHTML = `
+            <p class="smallText">
+                No matches found for ${getRoundTitle(selectedRound)}.
+            </p>
+        `;
+        return;
+    }
 
     const orderedPlayers = [
         currentUsername,
@@ -427,7 +613,7 @@ async function renderGroupPredictionTable(currentUsername, allMembers) {
                         return `
                             <tr>
                                 <td class="predictionMatchInfo">
-                                    ${renderMatchInfoCell(match, result, index + 1)}
+                                    ${renderMatchInfoCell(match, result, index + 1, selectedRound)}
                                 </td>
 
                                 ${orderedPlayers.map(player => `
@@ -447,11 +633,10 @@ async function renderGroupPredictionTable(currentUsername, allMembers) {
     `;
 }
 
-
-function renderMatchInfoCell(match, result, gameNumber) {
+function renderMatchInfoCell(match, result, gameNumber, roundName = "RoundOf32") {
     return `
         <div class="gameNumber">
-            Round of 32: Game ${gameNumber}
+            ${getRoundLabelForGame(roundName, gameNumber)}
         </div>
 
         <strong>${match.homeTeam} vs ${match.awayTeam}</strong>
@@ -497,7 +682,6 @@ function renderMatchInfoCell(match, result, gameNumber) {
         }
     `;
 }
-
 
 function renderPlayerPredictionCell(prediction, result) {
     if (!prediction) {
@@ -549,7 +733,7 @@ function formatGermanMatchTime(startTime) {
 }
 
 
-async function renderHeadToHeadComparison(currentUsername, otherUsername, groupId) {
+async function renderHeadToHeadComparison(currentUsername, otherUsername, groupId, selectedRound = "RoundOf16") {
     const container =
         document.getElementById("headToHeadContainer");
 
@@ -557,7 +741,19 @@ async function renderHeadToHeadComparison(currentUsername, otherUsername, groupI
         <h2>Loading comparison...</h2>
     `;
 
-    const matches = await getRound32Matches();
+    const settings = await getTournamentSettings();
+
+    if (!isPredictionDisplayEnabled(settings, selectedRound)) {
+        container.innerHTML = `
+            <p class="warningText">
+                ${getRoundTitle(selectedRound)} predictions are not visible yet.
+                The admin must enable prediction display first.
+            </p>
+        `;
+        return;
+    }
+
+    const matches = await getMatchesForRound(selectedRound);
     const matchesMap = await getAllMatchesMap();
 
     const myPredictions =
@@ -653,7 +849,7 @@ async function renderHeadToHeadComparison(currentUsername, otherUsername, groupI
     container.innerHTML = `
         <hr>
 
-        <h2>Head-to-Head</h2>
+        <h2>Head-to-Head — ${getRoundTitle(selectedRound)}</h2>
 
         <div class="comparisonSummary">
 
@@ -679,7 +875,6 @@ async function renderHeadToHeadComparison(currentUsername, otherUsername, groupI
         ${matchCards.join("")}
     `;
 }
-
 
 function renderPredictionBox(prediction, points) {
     if (!prediction) {
@@ -822,7 +1017,7 @@ function createMatchCard(match) {
                 </span>
             </p>
 
-            <div class="teamRow selectedWinner"
+            <div class="teamRow"
                  data-match="${match.id}"
                  data-team="${match.homeTeam}"
                  data-side="home">
@@ -839,7 +1034,7 @@ function createMatchCard(match) {
                             data-match="${match.id}"
                             data-team="home">-</button>
 
-                    <span id="${match.id}_homeGoals">0</span>
+                    <span id="${match.id}_homeGoals">-</span>
 
                     <button class="goalPlus"
                             data-match="${match.id}"
@@ -864,7 +1059,7 @@ function createMatchCard(match) {
                             data-match="${match.id}"
                             data-team="away">-</button>
 
-                    <span id="${match.id}_awayGoals">0</span>
+                    <span id="${match.id}_awayGoals">-</span>
 
                     <button class="goalPlus"
                             data-match="${match.id}"
@@ -875,7 +1070,7 @@ function createMatchCard(match) {
             <p>
                 Winner:
                 <strong id="${match.id}_winner">
-                    ${match.homeTeam}
+                    Not selected
                 </strong>
             </p>
 
@@ -896,6 +1091,7 @@ function attachPredictionEvents(matches) {
             const matchId = button.dataset.match;
             const selectedTeam = button.dataset.team;
 
+            markPredictionChanged();
             setWinner(matchId, selectedTeam);
         });
     });
@@ -908,11 +1104,19 @@ function attachPredictionEvents(matches) {
             const team = btn.dataset.team;
 
             if (team === "home") {
-                predictions[matchId].homeGoals++;
+                predictions[matchId].homeGoals =
+                    predictions[matchId].homeGoals === null
+                        ? 0
+                        : predictions[matchId].homeGoals + 1;
             } else {
-                predictions[matchId].awayGoals++;
+                predictions[matchId].awayGoals =
+                    predictions[matchId].awayGoals === null
+                        ? 0
+                        : predictions[matchId].awayGoals + 1;
             }
 
+            markPredictionChanged();
+            markPredictionChanged();
             updateGoalDisplay(matchId);
             autoSelectWinner(matchId);
         });
@@ -925,14 +1129,23 @@ function attachPredictionEvents(matches) {
             const matchId = btn.dataset.match;
             const team = btn.dataset.team;
 
-            if (team === "home" && predictions[matchId].homeGoals > 0) {
+            if (
+                team === "home" &&
+                predictions[matchId].homeGoals !== null &&
+                predictions[matchId].homeGoals > 0
+            ) {
                 predictions[matchId].homeGoals--;
             }
 
-            if (team === "away" && predictions[matchId].awayGoals > 0) {
+            if (
+                team === "away" &&
+                predictions[matchId].awayGoals !== null &&
+                predictions[matchId].awayGoals > 0
+            ) {
                 predictions[matchId].awayGoals--;
             }
 
+            markPredictionChanged();
             updateGoalDisplay(matchId);
             autoSelectWinner(matchId);
         });
@@ -942,16 +1155,25 @@ function attachPredictionEvents(matches) {
 
 function updateGoalDisplay(matchId) {
     document.getElementById(`${matchId}_homeGoals`).innerText =
-        predictions[matchId].homeGoals;
+        predictions[matchId].homeGoals === null
+            ? "-"
+            : predictions[matchId].homeGoals;
 
     document.getElementById(`${matchId}_awayGoals`).innerText =
-        predictions[matchId].awayGoals;
+        predictions[matchId].awayGoals === null
+            ? "-"
+            : predictions[matchId].awayGoals;
 }
-
 
 function autoSelectWinner(matchId) {
     const homeGoals = predictions[matchId].homeGoals;
     const awayGoals = predictions[matchId].awayGoals;
+
+    if (homeGoals === null || awayGoals === null) {
+        document.getElementById(`${matchId}_winner`).innerText =
+            predictions[matchId].winner || "Not selected";
+        return;
+    }
 
     const homeButton =
         document.querySelector(
@@ -973,7 +1195,7 @@ function autoSelectWinner(matchId) {
 
     if (homeGoals === awayGoals) {
         document.getElementById(`${matchId}_winner`).innerText =
-            predictions[matchId].winner;
+            predictions[matchId].winner || "Not selected";
     }
 }
 
@@ -1002,6 +1224,25 @@ async function submitPredictions(username, matches) {
     );
 
     if (!confirmSubmit) return;
+
+    const settings = await getTournamentSettings();
+    const activeRound = settings.activePredictionRound || "RoundOf16";
+    const submittedField = getSubmittedFieldForRound(activeRound);
+
+    for (const match of matches) {
+        const prediction = predictions[match.id];
+
+        if (
+            prediction.homeGoals === null ||
+            prediction.awayGoals === null ||
+            !prediction.winner
+        ) {
+            alert(
+                `Please complete prediction for ${match.homeTeam} vs ${match.awayTeam}.`
+            );
+            return;
+        }
+    }
 
     for (const match of matches) {
         const prediction = predictions[match.id];
@@ -1038,7 +1279,7 @@ async function submitPredictions(username, matches) {
             doc(db, "predictions", username, "matches", match.id),
             {
                 matchId: match.id,
-                round: "RoundOf32",
+                round: activeRound,
                 homeTeam: match.homeTeam,
                 awayTeam: match.awayTeam,
                 homeGoals: predictions[match.id].homeGoals,
@@ -1050,8 +1291,11 @@ async function submitPredictions(username, matches) {
     }
 
     await updateDoc(doc(db, "users", username), {
-        predictionsSubmittedRound32: true
+        [submittedField]: true
     });
+
+    hasUnsavedPredictionChanges = false;
+    disablePredictionLeaveWarning();
 
     alert("Predictions submitted successfully.");
 
@@ -1063,6 +1307,83 @@ async function submitPredictions(username, matches) {
 }
 
 
+function markPredictionChanged() {
+    hasUnsavedPredictionChanges = true;
+}
+
+
+function setupPredictionLeaveWarning() {
+    if (predictionNavigationWarningAttached) return;
+
+    predictionNavigationWarningAttached = true;
+
+    window.addEventListener("beforeunload", handleBeforeUnloadPredictionWarning);
+
+    const navButtonIds = [
+        "homeBtn",
+        "groupsBtn",
+        "predictionsBtn",
+        "leaderboardBtn",
+        "logoutBtn",
+        "adminBtn"
+    ];
+
+    predictionNavButtonHandlers = [];
+
+    navButtonIds.forEach(buttonId => {
+        const button = document.getElementById(buttonId);
+
+        if (!button) return;
+
+        const handler = event => {
+            if (!hasUnsavedPredictionChanges) return;
+
+            const leave = confirm(
+                "Predictions are not submitted and may be lost. Do you want to leave this page?"
+            );
+
+            if (!leave) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                return false;
+            }
+
+            hasUnsavedPredictionChanges = false;
+            disablePredictionLeaveWarning();
+        };
+
+        button.addEventListener("click", handler, true);
+
+        predictionNavButtonHandlers.push({
+            button,
+            handler
+        });
+    });
+}
+
+
+function handleBeforeUnloadPredictionWarning(event) {
+    if (!hasUnsavedPredictionChanges) return;
+
+    event.preventDefault();
+    event.returnValue = "Predictions are not submitted and may be lost.";
+}
+
+
+function disablePredictionLeaveWarning() {
+    if (!predictionNavigationWarningAttached) return;
+
+    window.removeEventListener("beforeunload", handleBeforeUnloadPredictionWarning);
+
+    predictionNavButtonHandlers.forEach(item => {
+        item.button.removeEventListener("click", item.handler, true);
+    });
+
+    predictionNavButtonHandlers = [];
+    predictionNavigationWarningAttached = false;
+}
+
+
 function getRankDisplay(index) {
     if (index === 0) return "🥇";
     if (index === 1) return "🥈";
@@ -1071,8 +1392,10 @@ function getRankDisplay(index) {
 }
 
 
-async function renderPredictionsOverlap(groupId) {
+async function renderPredictionsOverlap(groupId, activeRound = "RoundOf16") {
     const container = document.getElementById("predictionsOverlapSection");
+
+    const defaultOverlapRound = "All";
 
     container.innerHTML = `
         <hr>
@@ -1083,6 +1406,16 @@ async function renderPredictionsOverlap(groupId) {
             This shows how similar each player's predictions are to every other player in this group.
         </p>
 
+        <div class="adminMatchCard">
+            <label for="predictionsOverlapRoundSelect">
+                <strong>Select overlap scope:</strong>
+            </label>
+
+            <select id="predictionsOverlapRoundSelect">
+                ${getRoundDropdownOptions(defaultOverlapRound, true)}
+            </select>
+        </div>
+
         <button id="recalculatePredictionsOverlapBtn" class="bigButton">
             Recalculate Predictions Overlap
         </button>
@@ -1091,46 +1424,62 @@ async function renderPredictionsOverlap(groupId) {
     `;
 
     document
+        .getElementById("predictionsOverlapRoundSelect")
+        .addEventListener("change", async event => {
+            await loadPredictionsOverlap(groupId, event.target.value);
+        });
+
+    document
         .getElementById("recalculatePredictionsOverlapBtn")
         .addEventListener("click", async () => {
             alert("Predictions overlap is being calculated, please wait.");
 
+            const selectedRound =
+                document.getElementById("predictionsOverlapRoundSelect").value;
+
             const overlapData =
-                await calculateAndSavePredictionsOverlap(groupId);
+                await calculateAndSavePredictionsOverlap(groupId, selectedRound);
 
             renderPredictionsOverlapTable(overlapData);
 
             alert("Predictions overlap is updated.");
         });
 
+    await loadPredictionsOverlap(groupId, defaultOverlapRound);
+}
+
+
+async function loadPredictionsOverlap(groupId, roundFilter = "All") {
+    const storageId = getPredictionsOverlapStorageId(groupId, roundFilter);
+
     const overlapSnap =
-        await getDoc(doc(db, "predictionsOverlap", groupId));
+        await getDoc(doc(db, "predictionsOverlap", storageId));
 
     if (overlapSnap.exists()) {
         renderPredictionsOverlapTable(overlapSnap.data());
     } else {
         document.getElementById("predictionsOverlapTable").innerHTML = `
             <p class="smallText">
-                Predictions overlap has not been calculated yet.
+                Predictions overlap has not been calculated yet for ${roundFilter === "All" ? "all visible predicted matches" : getRoundTitle(roundFilter)}.
             </p>
         `;
     }
 }
 
-
-async function calculateAndSavePredictionsOverlap(groupId) {
+async function calculateAndSavePredictionsOverlap(groupId, roundFilter = "All") {
     const group = await getGroup(groupId);
 
     if (!group || !group.members) {
         return {
             players: [],
             matrix: {},
-            totalMatches: 0
+            totalMatches: 0,
+            roundFilter
         };
     }
 
     const players = Object.keys(group.members).sort();
-    const matches = await getRound32Matches();
+    const matches = await getMatchesForOverlapFilter(roundFilter);
 
     const allPredictions = {};
 
@@ -1145,6 +1494,7 @@ async function calculateAndSavePredictionsOverlap(groupId) {
 
         for (const columnPlayer of players) {
             let similarity = 0;
+            let comparedMatches = 0;
 
             for (const match of matches) {
                 const rowPrediction =
@@ -1156,6 +1506,8 @@ async function calculateAndSavePredictionsOverlap(groupId) {
                 if (!rowPrediction || !columnPrediction) {
                     continue;
                 }
+
+                comparedMatches += 1;
 
                 if (rowPrediction.winner === columnPrediction.winner) {
                     similarity += 1;
@@ -1180,7 +1532,7 @@ async function calculateAndSavePredictionsOverlap(groupId) {
                 }
             }
 
-            const totalComparisons = matches.length * 4;
+            const totalComparisons = comparedMatches * 4;
 
             matrix[rowPlayer][columnPlayer] =
                 totalComparisons === 0
@@ -1193,17 +1545,17 @@ async function calculateAndSavePredictionsOverlap(groupId) {
         players,
         matrix,
         totalMatches: matches.length,
+        roundFilter,
         updatedAt: new Date().toISOString()
     };
 
     await setDoc(
-        doc(db, "predictionsOverlap", groupId),
+        doc(db, "predictionsOverlap", getPredictionsOverlapStorageId(groupId, roundFilter)),
         overlapData
     );
 
     return overlapData;
 }
-
 
 function renderPredictionsOverlapTable(overlapData) {
     const container =
@@ -1217,10 +1569,78 @@ function renderPredictionsOverlapTable(overlapData) {
     }
 
     const players = overlapData.players;
+    const roundLabel =
+        overlapData.roundFilter === "All"
+            ? "All visible predicted matches"
+            : getRoundTitle(overlapData.roundFilter);
 
     container.innerHTML = `
-        <div class="leaderboardWrapper">
-            <table class="leaderboardTable">
+        <style>
+            #predictionsOverlapTable .overlapWrapper {
+                max-height: 80vh;
+                overflow: auto;
+            }
+
+            #predictionsOverlapTable .overlapTable thead th {
+                position: sticky;
+                top: 0;
+                z-index: 20;
+            }
+
+            #predictionsOverlapTable .overlapTable th:first-child,
+            #predictionsOverlapTable .overlapTable td:first-child {
+                position: sticky;
+                left: 0;
+                z-index: 15;
+                background: white;
+            }
+
+            #predictionsOverlapTable .overlapTable thead th:first-child {
+                z-index: 25;
+            }
+
+            #predictionsOverlapTable .overlapCell {
+                font-weight: bold;
+                text-align: center;
+                min-width: 70px;
+            }
+
+            #predictionsOverlapTable .overlapDiagonal {
+                outline: 3px solid #1b5e20;
+            }
+
+            #predictionsOverlapTable .overlapVeryHigh {
+                background: #2e7d32;
+                color: white;
+            }
+
+            #predictionsOverlapTable .overlapHigh {
+                background: #66bb6a;
+                color: #073b07;
+            }
+
+            #predictionsOverlapTable .overlapMedium {
+                background: #ffd54f;
+                color: #3b3000;
+            }
+
+            #predictionsOverlapTable .overlapLow {
+                background: #ffb74d;
+                color: #3b2200;
+            }
+
+            #predictionsOverlapTable .overlapVeryLow {
+                background: #ef5350;
+                color: white;
+            }
+        </style>
+
+        <p class="leaderboardInfoText">
+            Predictions Overlap: ${roundLabel}
+        </p>
+
+        <div class="leaderboardWrapper overlapWrapper">
+            <table class="leaderboardTable overlapTable">
                 <thead>
                     <tr>
                         <th>Player</th>
@@ -1237,13 +1657,18 @@ function renderPredictionsOverlapTable(overlapData) {
                                 👤 <strong>${rowPlayer}</strong>
                             </td>
 
-                            ${players.map(columnPlayer => `
-                                <td>
-                                    <strong>
-                                        ${overlapData.matrix[rowPlayer][columnPlayer]}%
-                                    </strong>
-                                </td>
-                            `).join("")}
+                            ${players.map(columnPlayer => {
+                                const value = overlapData.matrix[rowPlayer][columnPlayer];
+                                const diagonalClass = rowPlayer === columnPlayer
+                                    ? " overlapDiagonal"
+                                    : "";
+
+                                return `
+                                    <td class="overlapCell ${getOverlapHeatClass(value)}${diagonalClass}">
+                                        ${value}%
+                                    </td>
+                                `;
+                            }).join("")}
                         </tr>
                     `).join("")}
                 </tbody>
@@ -1256,3 +1681,53 @@ function renderPredictionsOverlapTable(overlapData) {
         </p>
     `;
 }
+
+
+function getOverlapHeatClass(value) {
+    if (value >= 90) return "overlapVeryHigh";
+    if (value >= 75) return "overlapHigh";
+    if (value >= 50) return "overlapMedium";
+    if (value >= 25) return "overlapLow";
+    return "overlapVeryLow";
+}
+
+
+async function getMatchesForOverlapFilter(roundFilter) {
+    const settings = await getTournamentSettings();
+
+    if (roundFilter !== "All") {
+        if (!isPredictionDisplayEnabled(settings, roundFilter)) {
+            return [];
+        }
+
+        return await getMatchesForRound(roundFilter);
+    }
+
+    const matchesSnap = await getDocs(collection(db, "matches"));
+    const matches = [];
+
+    matchesSnap.forEach(docSnap => {
+        const match = docSnap.data();
+
+        if (
+            PREDICTION_ROUNDS.includes(match.round) &&
+            isPredictionDisplayEnabled(settings, match.round)
+        ) {
+            matches.push(match);
+        }
+    });
+
+    matches.sort((a, b) => a.id.localeCompare(b.id));
+
+    return matches;
+}
+
+
+function getPredictionsOverlapStorageId(groupId, roundFilter) {
+    if (roundFilter === "All") {
+        return groupId;
+    }
+
+    return `${groupId}_${roundFilter}`;
+}
+

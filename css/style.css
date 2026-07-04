@@ -507,3 +507,86 @@ input {
     cursor: not-allowed;
     opacity: 0.8;
 }
+
+.successText {
+    color: darkgreen;
+    font-weight: bold;
+}
+
+.predictionStatusWrapper {
+    width: 100%;
+    overflow-x: visible;
+}
+
+.predictionStatusTable {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.predictionStatusTable th,
+.predictionStatusTable td {
+    border: 1px solid #ccc;
+    padding: 10px;
+    text-align: center;
+}
+
+.predictionStatusTable th:first-child,
+.predictionStatusTable td:first-child {
+    width: 60%;
+}
+
+.predictionStatusTable th:last-child,
+.predictionStatusTable td:last-child {
+    width: 40%;
+}
+
+/* ---------- Predictions Overlap Heatmap ---------- */
+
+.overlapVeryHigh {
+    background: #2e7d32;
+    color: white;
+    font-weight: bold;
+}
+
+.overlapHigh {
+    background: #66bb6a;
+    font-weight: bold;
+}
+
+.overlapMedium {
+    background: #ffd54f;
+    font-weight: bold;
+}
+
+.overlapLow {
+    background: #ffb74d;
+    font-weight: bold;
+}
+
+.overlapVeryLow {
+    background: #ef5350;
+    color: white;
+    font-weight: bold;
+}
+
+/* Freeze first row and first column */
+
+.overlapTable th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+.overlapTable td:first-child,
+.overlapTable th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 15;
+    background: #f5f5f5;
+    font-weight: bold;
+}
+
+.overlapTable th:first-child {
+    z-index: 25;
+}

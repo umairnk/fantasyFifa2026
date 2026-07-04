@@ -22,23 +22,68 @@ import {
 from "./groups.js";
 
 
+const LEADERBOARD_ROUNDS = [
+    "Overall",
+    "RoundOf32",
+    "RoundOf16",
+    "QF",
+    "SF",
+    "F"
+];
+
+
 export async function recalculateGlobalLeaderboard() {
-    return recalculateLeaderboard("global", null);
+    let overallRows = [];
+
+    for (const roundFilter of LEADERBOARD_ROUNDS) {
+        const leaderboardId =
+            getLeaderboardStorageId("global", roundFilter);
+
+        const rows =
+            await recalculateLeaderboard(leaderboardId, null, roundFilter);
+
+        if (roundFilter === "Overall") {
+            overallRows = rows;
+        }
+    }
+
+    return overallRows;
 }
 
 
 export async function recalculateGroupLeaderboard(groupId) {
-    return recalculateLeaderboard(groupId, groupId);
+    let overallRows = [];
+
+    for (const roundFilter of LEADERBOARD_ROUNDS) {
+        const leaderboardId =
+            getLeaderboardStorageId(groupId, roundFilter);
+
+        const rows =
+            await recalculateLeaderboard(leaderboardId, groupId, roundFilter);
+
+        if (roundFilter === "Overall") {
+            overallRows = rows;
+        }
+    }
+
+    return overallRows;
 }
 
 
-async function recalculateLeaderboard(leaderboardId, groupId) {
+async function recalculateLeaderboard(leaderboardId, groupId, roundFilter = "Overall") {
     const matchesSnap = await getDocs(collection(db, "matches"));
 
     const matches = {};
 
     matchesSnap.forEach(docSnap => {
-        matches[docSnap.id] = docSnap.data();
+        const match = docSnap.data();
+
+        if (
+            roundFilter === "Overall" ||
+            match.round === roundFilter
+        ) {
+            matches[docSnap.id] = match;
+        }
     });
 
     let players = [];
@@ -156,7 +201,7 @@ async function calculateIndividualWins(leaderboard, players, matches) {
 export async function loadGlobalLeaderboard() {
     await loadLeaderboardPage({
         title: "🏆 Global Leaderboard",
-        leaderboardId: "global",
+        leaderboardBaseId: "global",
         groupId: null,
         showWins: false,
         isGlobal: true
@@ -167,7 +212,7 @@ export async function loadGlobalLeaderboard() {
 export async function loadGroupLeaderboard(groupId, groupName) {
     await loadLeaderboardPage({
         title: `🏆 ${groupName} Leaderboard`,
-        leaderboardId: groupId,
+        leaderboardBaseId: groupId,
         groupId,
         showWins: true,
         isGlobal: false
@@ -180,6 +225,21 @@ async function loadLeaderboardPage(config) {
 
     container.innerHTML = `
         <h2>${config.title}</h2>
+
+        <div class="adminMatchCard">
+            <label for="leaderboardRoundSelect">
+                <strong>Select leaderboard:</strong>
+            </label>
+
+            <select id="leaderboardRoundSelect">
+                <option value="Overall">Overall</option>
+                <option value="RoundOf32">Round of 32</option>
+                <option value="RoundOf16">Round of 16</option>
+                <option value="QF">Quarter Final</option>
+                <option value="SF">Semi Final</option>
+                <option value="F">Final</option>
+            </select>
+        </div>
 
         <button id="recalculateLeaderboardBtn">
             🔄 Recalculate Leaderboard
@@ -198,7 +258,7 @@ async function loadLeaderboardPage(config) {
                 <li><strong>1 point</strong> for correct winner.</li>
                 <li><strong>1 point</strong> for correct number of goals by the winner.</li>
                 <li><strong>1 point</strong> for correct number of goals by the losing team.</li>
-                <li><strong>1 point</strong> for correct goal difference.</li>
+                <li><strong>1 point</strong> for correct signed goal difference.</li>
             </ul>
 
             <p>
@@ -216,34 +276,41 @@ async function loadLeaderboardPage(config) {
     `;
 
     document
-    .getElementById("recalculateLeaderboardBtn")
-    .addEventListener("click", async () => {
+        .getElementById("leaderboardRoundSelect")
+        .addEventListener("change", async event => {
+            await loadStoredLeaderboard(config, event.target.value);
+        });
 
-        alert("The leaderboards are being calculated, please wait.");
+    document
+        .getElementById("recalculateLeaderboardBtn")
+        .addEventListener("click", async () => {
+            alert("The leaderboards are being calculated, please wait.");
 
-        let rows;
+            if (config.groupId) {
+                await recalculateGroupLeaderboard(config.groupId);
+            } else {
+                await recalculateGlobalLeaderboard();
+            }
 
-        if (config.groupId) {
-            rows = await recalculateGroupLeaderboard(config.groupId);
-        } else {
-            rows = await recalculateGlobalLeaderboard();
-        }
+            const selectedRound =
+                document.getElementById("leaderboardRoundSelect").value;
 
-        rows = sortLeaderboard(rows);
+            await loadStoredLeaderboard(config, selectedRound);
 
-        renderLeaderboard(
-            config.isGlobal ? rows.slice(0, 10) : rows,
-            config.showWins,
-            config.isGlobal,
-            rows.length
-        );
+            alert("Leaderboards are updated.");
+        });
 
-        alert("Leaderboards are updated.");
-    });
+    await loadStoredLeaderboard(config, "Overall");
+}
+
+
+async function loadStoredLeaderboard(config, roundFilter) {
+    const leaderboardId =
+        getLeaderboardStorageId(config.leaderboardBaseId, roundFilter);
 
     const snap =
         await getDocs(
-            collection(db, "leaderboards", config.leaderboardId, "users")
+            collection(db, "leaderboards", leaderboardId, "users")
         );
 
     let rows = [];
@@ -258,29 +325,36 @@ async function loadLeaderboardPage(config) {
         config.isGlobal ? rows.slice(0, 10) : rows,
         config.showWins,
         config.isGlobal,
-        rows.length
+        rows.length,
+        roundFilter
     );
 }
 
 
-function renderLeaderboard(rows, showWins, isGlobal = false, totalPlayers = null) {
+function renderLeaderboard(
+    rows,
+    showWins,
+    isGlobal = false,
+    totalPlayers = null,
+    roundFilter = "Overall"
+) {
     const table = document.getElementById("leaderboardTable");
 
     if (rows.length === 0) {
-        table.innerHTML = "<p>No leaderboard data yet.</p>";
+        table.innerHTML = `
+            <p>No leaderboard data yet for ${formatRoundName(roundFilter)}.</p>
+        `;
         return;
     }
 
     table.innerHTML = `
-        ${
-            isGlobal
-            ? `
-                <p class="leaderboardInfoText">
-                    Showing top 10 out of total ${totalPlayers} players
-                </p>
-              `
-            : ""
-        }
+        <p class="leaderboardInfoText">
+            ${
+                isGlobal
+                ? `Showing top 10 out of total ${totalPlayers} players`
+                : `Showing ${formatRoundName(roundFilter)} leaderboard`
+            }
+        </p>
 
         <div class="leaderboardWrapper">
             <table class="leaderboardTable">
@@ -331,6 +405,27 @@ function renderLeaderboard(rows, showWins, isGlobal = false, totalPlayers = null
             </table>
         </div>
     `;
+}
+
+
+function getLeaderboardStorageId(baseId, roundFilter) {
+    if (roundFilter === "Overall") {
+        return baseId;
+    }
+
+    return `${baseId}_${roundFilter}`;
+}
+
+
+function formatRoundName(round) {
+    if (round === "Overall") return "Overall";
+    if (round === "RoundOf32") return "Round of 32";
+    if (round === "RoundOf16") return "Round of 16";
+    if (round === "QF") return "Quarter Final";
+    if (round === "SF") return "Semi Final";
+    if (round === "F") return "Final";
+
+    return round;
 }
 
 
