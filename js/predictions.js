@@ -1197,10 +1197,47 @@ function autoSelectWinner(matchId) {
         document.getElementById(`${matchId}_winner`).innerText =
             predictions[matchId].winner || "Not selected";
     }
+    updateWinnerButtonState(matchId);
 }
 
 
 function setWinner(matchId, selectedTeam) {
+    const matchCard = document.getElementById(`card_${matchId}`);
+
+    const homeButton =
+        document.querySelector(
+            `.teamButton[data-match="${matchId}"][data-side="home"]`
+        );
+
+    const awayButton =
+        document.querySelector(
+            `.teamButton[data-match="${matchId}"][data-side="away"]`
+        );
+
+    const homeTeam = homeButton.dataset.team;
+    const awayTeam = awayButton.dataset.team;
+
+    const homeGoals = predictions[matchId].homeGoals;
+    const awayGoals = predictions[matchId].awayGoals;
+
+    if (
+        homeGoals !== null &&
+        awayGoals !== null &&
+        homeGoals > awayGoals &&
+        selectedTeam !== homeTeam
+    ) {
+        return;
+    }
+
+    if (
+        homeGoals !== null &&
+        awayGoals !== null &&
+        awayGoals > homeGoals &&
+        selectedTeam !== awayTeam
+    ) {
+        return;
+    }
+
     predictions[matchId].winner = selectedTeam;
 
     document
@@ -1215,6 +1252,43 @@ function setWinner(matchId, selectedTeam) {
 
     document.getElementById(`${matchId}_winner`).innerText =
         selectedTeam;
+
+    updateWinnerButtonState(matchId);
+}
+
+function updateWinnerButtonState(matchId) {
+    const homeButton =
+        document.querySelector(
+            `.teamButton[data-match="${matchId}"][data-side="home"]`
+        );
+
+    const awayButton =
+        document.querySelector(
+            `.teamButton[data-match="${matchId}"][data-side="away"]`
+        );
+
+    const homeGoals = predictions[matchId].homeGoals;
+    const awayGoals = predictions[matchId].awayGoals;
+
+    homeButton.disabled = false;
+    awayButton.disabled = false;
+
+    homeButton.classList.remove("disabledWinnerButton");
+    awayButton.classList.remove("disabledWinnerButton");
+
+    if (homeGoals === null || awayGoals === null) {
+        return;
+    }
+
+    if (homeGoals > awayGoals) {
+        awayButton.disabled = true;
+        awayButton.classList.add("disabledWinnerButton");
+    }
+
+    if (awayGoals > homeGoals) {
+        homeButton.disabled = true;
+        homeButton.classList.add("disabledWinnerButton");
+    }
 }
 
 

@@ -333,15 +333,41 @@ async function loadAdminMatches() {
     const container = document.getElementById("adminMatchesContainer");
     container.innerHTML = "";
 
+    const settingsSnap = await getDoc(doc(db, "settings", "tournament"));
+
+    const activeRound =
+        settingsSnap.exists()
+            ? settingsSnap.data().activePredictionRound || "RoundOf16"
+            : "RoundOf16";
+
     const snapshot = await getDocs(collection(db, "matches"));
 
     const matches = [];
 
     snapshot.forEach(docSnap => {
-        matches.push(docSnap.data());
+        const match = docSnap.data();
+
+        if (match.round === activeRound) {
+            matches.push(match);
+        }
     });
 
     matches.sort((a, b) => a.id.localeCompare(b.id));
+
+    if (matches.length === 0) {
+        container.innerHTML = `
+            <p class="warningText">
+                No matches found for the current round: ${activeRound}
+            </p>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <p class="leaderboardInfoText">
+            Showing match editor for current round only: ${formatRoundName(activeRound)}
+        </p>
+    `;
 
     matches.forEach(match => {
         const teamInputs = currentUserIsFullAdmin

@@ -590,3 +590,8 @@ input {
 .overlapTable th:first-child {
     z-index: 25;
 }
+
+.disabledWinnerButton {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
