@@ -106,6 +106,11 @@ export async function loadPredictionPage(username, groupId = null, groupName = n
         return;
     }
 
+    if (isPredictionRoundClosed(settings, activeRound)) {
+        await showPredictionClosedPage(username, groupId, groupName, activeRound);
+        return;
+    }
+
     const matches = await getMatchesForRound(activeRound);
     const roundTitle = getRoundTitle(activeRound);
 
@@ -244,6 +249,13 @@ async function getTournamentSettings() {
                 QF: false,
                 SF: false,
                 F: false
+            },
+            predictionsClosed: {
+                RoundOf32: true,
+                RoundOf16: false,
+                QF: false,
+                SF: false,
+                F: false
             }
         };
     }
@@ -294,6 +306,13 @@ function isPredictionDisplayEnabled(settings, round) {
 }
 
 
+function isPredictionRoundClosed(settings, round) {
+    const predictionsClosed = settings.predictionsClosed || {};
+
+    return predictionsClosed[round] === true;
+}
+
+
 function getDefaultPredictionTableRound(activeRound) {
     if (PREDICTION_ROUNDS.includes(activeRound)) {
         return activeRound;
@@ -305,6 +324,66 @@ function getDefaultPredictionTableRound(activeRound) {
 
 function getRoundLabelForGame(round, gameNumber) {
     return `${getRoundTitle(round)}: Game ${gameNumber}`;
+}
+
+
+async function showPredictionClosedPage(username, groupId, groupName, activeRound = "RoundOf16") {
+    const container = document.getElementById("predictionsContainer");
+
+    const settings = await getTournamentSettings();
+    const displayEnabled = isPredictionDisplayEnabled(settings, activeRound);
+    const roundTitle = getRoundTitle(activeRound);
+
+    disablePredictionLeaveWarning();
+    hasUnsavedPredictionChanges = false;
+
+    if (!displayEnabled) {
+        container.innerHTML = `
+            <h2>${roundTitle} Predictions Closed</h2>
+
+            <p class="warningText">
+                The prediction deadline for ${roundTitle} has passed.
+                Since you did not submit predictions in time, you cannot make predictions for this round anymore.
+            </p>
+
+            <p class="smallText">
+                Other players' ${roundTitle} predictions are not visible yet.
+                They will become visible after the admin enables prediction display.
+            </p>
+        `;
+
+        return;
+    }
+
+    container.innerHTML = `
+        <h2>${roundTitle} Predictions Closed</h2>
+
+        <p class="warningText">
+            The prediction deadline for ${roundTitle} has passed.
+            Since you did not submit predictions in time, you cannot make predictions for this round anymore.
+        </p>
+
+        ${groupName ? `
+            <p class="smallText">
+                Current group: <strong>${groupName}</strong>
+            </p>
+        ` : `
+            <p class="smallText">
+                Open a group first if you want to see group predictions.
+            </p>
+        `}
+
+        <div id="comparisonSection"></div>
+
+        <hr>
+
+        <div id="predictionsOverlapSection"></div>
+    `;
+
+    if (groupId) {
+        await renderComparePlayers(username, groupId, activeRound);
+        await renderPredictionsOverlap(groupId, activeRound);
+    }
 }
 
 

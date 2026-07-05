@@ -19,7 +19,6 @@ import {
 }
 from "./leaderboard.js";
 
-setDoc
 let currentAdminUsername = null;
 let currentUserIsFullAdmin = false;
 
@@ -46,19 +45,22 @@ export async function loadAdminPage(username = null) {
 
     const container = document.getElementById("adminContainer");
 
-    if (currentUserIsFullAdmin) {
-        container.innerHTML = `
-            <h2>Admin Area</h2>
+    const tournamentInfo = await getTournamentInfo();
+    const activeRound = tournamentInfo.activeRound;
+    const predictionDisplayEnabled = tournamentInfo.predictionDisplayEnabled;
 
+    const predictionAdminPanel = !predictionDisplayEnabled
+        ? `
             <div class="adminMatchCard">
                 <h3>Prediction Display Control</h3>
 
                 <p class="smallText">
                     Enable this only after the prediction deadline has passed.
+                    This will also close predictions for ${formatRoundName(activeRound)}.
                 </p>
 
-                <button id="enableRound16DisplayBtn" class="bigButton">
-                    Enable Round of 16 Predictions Display
+                <button id="enablePredictionsDisplayBtn" class="bigButton">
+                    Enable ${formatRoundName(activeRound)} Predictions Display
                 </button>
             </div>
 
@@ -68,6 +70,14 @@ export async function loadAdminPage(username = null) {
             </div>
 
             <hr>
+          `
+        : "";
+
+    if (currentUserIsFullAdmin) {
+        container.innerHTML = `
+            <h2>Admin Area</h2>
+
+            ${predictionAdminPanel}
 
             <h2>⚽ Match Editor</h2>
             <div id="adminMatchesContainer"></div>
@@ -83,9 +93,11 @@ export async function loadAdminPage(username = null) {
             <div id="adminGroupsContainer"></div>
         `;
 
-        attachPredictionDisplayButton();
+        if (!predictionDisplayEnabled) {
+            attachPredictionDisplayButton(activeRound);
+            await loadPredictionStatusPanel();
+        }
 
-        await loadPredictionStatusPanel();
         await loadAdminMatches();
         await loadAdminUsers();
         await loadAdminGroups();
@@ -100,34 +112,18 @@ export async function loadAdminPage(username = null) {
             You can update match scores, winner and status only.
         </p>
 
-        <div class="adminMatchCard">
-            <h3>Prediction Display Control</h3>
-
-            <p class="smallText">
-                Enable this only after the prediction deadline has passed.
-            </p>
-
-            <button id="enableRound16DisplayBtn" class="bigButton">
-                Enable Round of 16 Predictions Display
-            </button>
-        </div>
-
-        <div class="adminMatchCard">
-            <h3>Prediction Submission Status</h3>
-            <div id="predictionStatusContainer"></div>
-        </div>
-
-        <hr>
+        ${predictionAdminPanel}
 
         <div id="adminMatchesContainer"></div>
     `;
 
-    attachPredictionDisplayButton();
+    if (!predictionDisplayEnabled) {
+        attachPredictionDisplayButton(activeRound);
+        await loadPredictionStatusPanel();
+    }
 
-    await loadPredictionStatusPanel();
     await loadAdminMatches();
 }
-
 
 async function reloadAdminPage() {
     await loadAdminPage(currentAdminUsername);
@@ -602,6 +598,9 @@ function attachMatchAdminEvents() {
                 return;
             }
 
+            button.disabled = true;
+            button.innerText = "Saving...";
+
             await updateDoc(doc(db, "matches", matchId), {
                 homeTeam,
                 awayTeam,
@@ -612,23 +611,20 @@ function attachMatchAdminEvents() {
                 updatedAt: new Date().toISOString()
             });
 
-            alert("The leaderboards are being calculated, please wait.");
+            showAdminStatus("The match result was saved. Leaderboards are being updated, please wait...");
 
-            await recalculateGlobalLeaderboard();
+            await updateLeaderboardsAfterResult();
 
-            const groupsSnap = await getDocs(collection(db, "groups"));
+            await markResultsUpdated();
 
-            for (const groupDoc of groupsSnap.docs) {
-                await recalculateGroupLeaderboard(groupDoc.id);
-            }
+            showAdminStatus("Leaderboards are updated. Prediction tables will show the new result after users refresh or reopen the Predictions tab.", "successText");
 
-            alert("Leaderboards are updated.");
+            alert("Result saved and leaderboards updated.");
 
             await reloadAdminPage();
         });
     });
 }
-
 
 async function addUserToGroupSafe(username, groupId) {
     const groupRef = doc(db, "groups", groupId);
@@ -839,31 +835,106 @@ async function enablePredictionsDisplay(round) {
     const currentDisplayPredictions =
         currentSettings.displayPredictions || {};
 
+    const currentPredictionsClosed =
+        currentSettings.predictionsClosed || {};
+
     await setDoc(settingsRef, {
         ...currentSettings,
         displayPredictions: {
             ...currentDisplayPredictions,
             [round]: true
+        },
+        predictionsClosed: {
+            ...currentPredictionsClosed,
+            [round]: true
+        },
+        predictionDeadlineClosedAt: {
+            ...(currentSettings.predictionDeadlineClosedAt || {}),
+            [round]: new Date().toISOString()
         }
     }, { merge: true });
 
-    alert(`${round} predictions are now visible to everyone.`);
+    alert(`${formatRoundName(round)} predictions are now visible to everyone. Predictions for this round are also closed.`);
+
+    await reloadAdminPage();
 }
 
-function attachPredictionDisplayButton() {
-    const button = document.getElementById("enableRound16DisplayBtn");
+function attachPredictionDisplayButton(round) {
+    const button = document.getElementById("enablePredictionsDisplayBtn");
 
     if (!button) return;
 
     button.addEventListener("click", async () => {
         const confirmEnable = confirm(
-            "Enable Round of 16 predictions display for everyone?"
+            `Enable ${formatRoundName(round)} predictions display for everyone and close predictions for users who did not submit?`
         );
 
         if (!confirmEnable) return;
 
-        await enablePredictionsDisplay("RoundOf16");
+        await enablePredictionsDisplay(round);
     });
+}
+
+async function getTournamentInfo() {
+    const settingsSnap = await getDoc(doc(db, "settings", "tournament"));
+
+    const settings = settingsSnap.exists()
+        ? settingsSnap.data()
+        : {};
+
+    const activeRound =
+        settings.activePredictionRound || "RoundOf16";
+
+    const predictionDisplayEnabled =
+        settings.displayPredictions?.[activeRound] === true;
+
+    const predictionsClosed =
+        settings.predictionsClosed?.[activeRound] === true;
+
+    return {
+        settings,
+        activeRound,
+        predictionDisplayEnabled,
+        predictionsClosed
+    };
+}
+
+function showAdminStatus(message, className = "warningText") {
+    let statusBox = document.getElementById("adminUpdateStatus");
+
+    if (!statusBox) {
+        const adminMatchesContainer = document.getElementById("adminMatchesContainer");
+
+        if (!adminMatchesContainer) {
+            alert(message);
+            return;
+        }
+
+        statusBox = document.createElement("p");
+        statusBox.id = "adminUpdateStatus";
+        adminMatchesContainer.prepend(statusBox);
+    }
+
+    statusBox.className = className;
+    statusBox.innerText = message;
+}
+
+async function updateLeaderboardsAfterResult() {
+    await recalculateGlobalLeaderboard();
+
+    const groupsSnap = await getDocs(collection(db, "groups"));
+
+    await Promise.all(
+        groupsSnap.docs.map(groupDoc =>
+            recalculateGroupLeaderboard(groupDoc.id)
+        )
+    );
+}
+
+async function markResultsUpdated() {
+    await setDoc(doc(db, "settings", "tournament"), {
+        lastResultsUpdateAt: new Date().toISOString()
+    }, { merge: true });
 }
 
 async function loadPredictionStatusPanel() {
