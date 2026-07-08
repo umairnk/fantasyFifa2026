@@ -1,6 +1,7 @@
 import { db } from "./firebase.js";
 import { round32Matches } from "./defaultMatches.js";
 import { round16Matches } from "./round16Matches.js";
+import { finalRoundMatches } from "./finalRoundMatches.js";
 
 import {
     doc,
@@ -22,6 +23,11 @@ import {
 }
 from "./groups.js";
 
+import {
+    loadFinalRoundPredictionTree
+}
+from "./predictionTree.js";
+
 
 let predictions = {};
 let hasUnsavedPredictionChanges = false;
@@ -31,9 +37,7 @@ let predictionNavButtonHandlers = [];
 const PREDICTION_ROUNDS = [
     "RoundOf32",
     "RoundOf16",
-    "QF",
-    "SF",
-    "F"
+    "QF-SF-F"
 ];
 
 const OVERLAP_ROUNDS = [
@@ -46,6 +50,7 @@ const OVERLAP_ROUNDS = [
 export async function initializeMatches() {
     await initializeMatchRound(round32Matches, "RoundOf32");
     await initializeMatchRound(round16Matches, "RoundOf16");
+    await initializeMatchRound(finalRoundMatches, "QF-SF-F");
 }
 
 
@@ -108,6 +113,12 @@ export async function loadPredictionPage(username, groupId = null, groupName = n
 
     if (isPredictionRoundClosed(settings, activeRound)) {
         await showPredictionClosedPage(username, groupId, groupName, activeRound);
+        return;
+    }
+
+    if (activeRound === "QF-SF-F") {
+        await loadFinalRoundPredictionTree(username, groupId, groupName);
+        insertQfsffScoringRules();
         return;
     }
 
@@ -245,17 +256,18 @@ async function getTournamentSettings() {
             activePredictionRound: "RoundOf16",
             displayPredictions: {
                 RoundOf32: true,
+                RoundOf16: true,
+                "QF-SF-F": false
+            },
+            predictionsOpen: {
+                RoundOf32: false,
                 RoundOf16: false,
-                QF: false,
-                SF: false,
-                F: false
+                "QF-SF-F": false
             },
             predictionsClosed: {
                 RoundOf32: true,
-                RoundOf16: false,
-                QF: false,
-                SF: false,
-                F: false
+                RoundOf16: true,
+                "QF-SF-F": false
             }
         };
     }
@@ -267,22 +279,48 @@ async function getTournamentSettings() {
 function getSubmittedFieldForRound(round) {
     if (round === "RoundOf32") return "predictionsSubmittedRound32";
     if (round === "RoundOf16") return "predictionsSubmittedRound16";
-    if (round === "QF") return "predictionsSubmittedQF";
-    if (round === "SF") return "predictionsSubmittedSF";
-    if (round === "F") return "predictionsSubmittedF";
+    if (round === "QF-SF-F") return "predictionsSubmittedQFSFF";
 
-    return "predictionsSubmittedRound16";
+    return "predictionsSubmittedQFSFF";
 }
 
 
 function getRoundTitle(round) {
-    if (round === "RoundOf32") return "Round of 32";
-    if (round === "RoundOf16") return "Round of 16";
-    if (round === "QF") return "Quarter Final";
-    if (round === "SF") return "Semi Final";
-    if (round === "F") return "Final";
+
+    if (round === "RoundOf32")
+        return "Round of 32";
+
+    if (round === "RoundOf16")
+        return "Round of 16";
+
+    if (round === "QF-SF-F")
+        return "QF • SF • 3rd Place • Final";
 
     return round;
+}
+
+
+function insertQfsffScoringRules() {
+    const container = document.getElementById("predictionsContainer");
+
+    if (!container || document.getElementById("qfsffScoringRules")) {
+        return;
+    }
+
+    const scoringHtml = `
+        
+    `;
+
+    const firstRoundHeading = Array
+        .from(container.querySelectorAll("h3"))
+        .find(heading => heading.textContent.trim() === "Quarter Finals");
+
+    if (firstRoundHeading) {
+        firstRoundHeading.insertAdjacentHTML("beforebegin", scoringHtml);
+        return;
+    }
+
+    container.insertAdjacentHTML("afterbegin", scoringHtml);
 }
 
 

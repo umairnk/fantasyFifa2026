@@ -124,6 +124,7 @@ export function logout() {
     localStorage.removeItem("username");
     localStorage.removeItem("currentGroupId");
     localStorage.removeItem("currentGroupName");
+    localStorage.removeItem("currentPage");
     location.reload();
 }
 

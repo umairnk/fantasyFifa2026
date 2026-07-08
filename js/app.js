@@ -60,17 +60,19 @@ async function startApp() {
         showAdminButton();
     }
 
-    openHomePage();
+    restoreLastOpenPage();
 }
 
 
 function openHomePage() {
+    localStorage.setItem("currentPage", "home");
     showPage("homePage");
     loadGroups(getCurrentUser());
 }
 
 
 function openPredictionsPage() {
+    localStorage.setItem("currentPage", "predictions");
     showPage("predictionsPage");
 
     loadPredictionPage(
@@ -82,23 +84,69 @@ function openPredictionsPage() {
 
 
 function openAdminPage() {
+    localStorage.setItem("currentPage", "admin");
     showPage("adminPage");
     loadAdminPage(getCurrentUser());
 }
 
 
 function openGlobalLeaderboardPage() {
+    localStorage.setItem("currentPage", "leaderboard");
     showPage("leaderboardPage");
     loadGlobalLeaderboard();
 }
 
 
 function openGroupLeaderboardPage(groupId, groupName) {
+    localStorage.setItem("currentPage", "groupLeaderboard");
     localStorage.setItem("currentGroupId", groupId);
     localStorage.setItem("currentGroupName", groupName);
 
     showPage("leaderboardPage");
     loadGroupLeaderboard(groupId, groupName);
+}
+
+function openInsightsPage() {
+    localStorage.setItem("currentPage", "insights");
+    showPage("insightsPage");
+
+    loadInsightsPage(
+        localStorage.getItem("currentGroupId"),
+        localStorage.getItem("currentGroupName")
+    );
+}
+
+function restoreLastOpenPage() {
+    const currentPage = localStorage.getItem("currentPage") || "home";
+    const groupId = localStorage.getItem("currentGroupId");
+    const groupName = localStorage.getItem("currentGroupName");
+
+    if (currentPage === "predictions") {
+        openPredictionsPage();
+        return;
+    }
+
+    if (currentPage === "leaderboard") {
+        openGlobalLeaderboardPage();
+        return;
+    }
+
+    if (currentPage === "groupLeaderboard" && groupId && groupName) {
+        openGroupLeaderboardPage(groupId, groupName);
+        return;
+    }
+
+    if (currentPage === "insights") {
+        openInsightsPage();
+        return;
+    }
+
+    if (currentPage === "admin") {
+        openAdminPage();
+        return;
+    }
+
+    openHomePage();
 }
 
 
@@ -127,12 +175,7 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
 
 
 document.getElementById("insightsBtn").addEventListener("click", () => {
-    showPage("insightsPage");
-
-    loadInsightsPage(
-        localStorage.getItem("currentGroupId"),
-        localStorage.getItem("currentGroupName")
-    );
+    openInsightsPage();
 });
 
 document.getElementById("logoutBtn").addEventListener("click", () => {

@@ -19,6 +19,11 @@ import {
 }
 from "./leaderboard.js";
 
+import {
+    loadFinalRoundAdminTree
+}
+from "./adminTree.js";
+
 let currentAdminUsername = null;
 let currentUserIsFullAdmin = false;
 
@@ -335,6 +340,21 @@ async function loadAdminMatches() {
         settingsSnap.exists()
             ? settingsSnap.data().activePredictionRound || "RoundOf16"
             : "RoundOf16";
+
+    if (activeRound === "QF-SF-F") {
+        await loadFinalRoundAdminTree({
+            currentUserIsFullAdmin,
+            onAfterSave: async () => {
+                showAdminStatus("The match result was saved. Leaderboards are being updated, please wait...");
+                await updateLeaderboardsAfterResult();
+                await markResultsUpdated();
+                showAdminStatus("Leaderboards are updated.", "successText");
+                alert("Result saved and leaderboards updated.");
+                await reloadAdminPage();
+            }
+        });
+        return;
+    }
 
     const snapshot = await getDocs(collection(db, "matches"));
 
@@ -952,9 +972,7 @@ async function loadPredictionStatusPanel() {
     const submittedField =
         activeRound === "RoundOf32" ? "predictionsSubmittedRound32" :
         activeRound === "RoundOf16" ? "predictionsSubmittedRound16" :
-        activeRound === "QF" ? "predictionsSubmittedQF" :
-        activeRound === "SF" ? "predictionsSubmittedSF" :
-        activeRound === "F" ? "predictionsSubmittedF" :
+        activeRound === "QF-SF-F" ? "predictionsSubmittedQFSFF" :
         "predictionsSubmittedRound16";
 
     const usersSnap = await getDocs(collection(db, "users"));
@@ -1027,9 +1045,7 @@ async function loadPredictionStatusPanel() {
 function formatRoundName(round) {
     if (round === "RoundOf32") return "Round of 32";
     if (round === "RoundOf16") return "Round of 16";
-    if (round === "QF") return "Quarter Final";
-    if (round === "SF") return "Semi Final";
-    if (round === "F") return "Final";
+    if (round === "QF-SF-F") return "QF • SF • 3rd Place • Final";
 
     return round;
 }

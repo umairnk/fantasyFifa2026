@@ -21,14 +21,17 @@ import {
 }
 from "./groups.js";
 
+import {
+    calculateFinalRoundPoints
+}
+from "./finalRoundEngine.js";
+
 
 const LEADERBOARD_ROUNDS = [
     "Overall",
     "RoundOf32",
     "RoundOf16",
-    "QF",
-    "SF",
-    "F"
+    "QF-SF-F"
 ];
 
 
@@ -118,7 +121,10 @@ async function recalculateLeaderboard(leaderboardId, groupId, roundFilter = "Ove
 
             if (!match) continue;
 
-            const points = calculatePoints(prediction, match);
+            const points =
+                match.round === "QF-SF-F"
+                    ? calculateFinalRoundPoints(prediction, match)
+                    : calculatePoints(prediction, match);
 
             if (points === null) continue;
 
@@ -175,7 +181,10 @@ async function calculateIndividualWins(leaderboard, players, matches) {
 
             if (!prediction) continue;
 
-            const points = calculatePoints(prediction, match);
+            const points =
+                match.round === "QF-SF-F"
+                    ? calculateFinalRoundPoints(prediction, match)
+                    : calculatePoints(prediction, match);
 
             if (points === null) continue;
 
@@ -235,9 +244,7 @@ async function loadLeaderboardPage(config) {
                 <option value="Overall">Overall</option>
                 <option value="RoundOf32">Round of 32</option>
                 <option value="RoundOf16">Round of 16</option>
-                <option value="QF">Quarter Final</option>
-                <option value="SF">Semi Final</option>
-                <option value="F">Final</option>
+                <option value="QF-SF-F">QF • SF • 3rd Place • Final</option>
             </select>
         </div>
 
@@ -421,9 +428,7 @@ function formatRoundName(round) {
     if (round === "Overall") return "Overall";
     if (round === "RoundOf32") return "Round of 32";
     if (round === "RoundOf16") return "Round of 16";
-    if (round === "QF") return "Quarter Final";
-    if (round === "SF") return "Semi Final";
-    if (round === "F") return "Final";
+    if (round === "QF-SF-F") return "QF • SF • 3rd Place • Final";
 
     return round;
 }
