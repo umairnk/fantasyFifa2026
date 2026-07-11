@@ -2,7 +2,8 @@ import {
     signUp,
     login,
     logout,
-    getCurrentUser
+    getCurrentUser,
+    isLoginDisabled
 }
 from "./auth.js";
 
@@ -50,6 +51,12 @@ async function startApp() {
     const username = getCurrentUser();
 
     if (!username) return;
+
+    if (await isLoginDisabled(username)) {
+        alert("Your account has been disabled. Please contact the administrator.");
+        logout();
+        return;
+    }
 
     showApp();
     setWelcome(username);

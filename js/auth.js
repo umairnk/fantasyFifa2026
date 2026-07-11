@@ -97,6 +97,12 @@ export async function login(username, password) {
     }
 
     const userData = userSnap.data();
+
+    if (userData.loginDisabled === true) {
+        alert("Your account has been disabled. Please contact the administrator.");
+        return false;
+    }
+
     const passwordHash = await hashPassword(password);
 
     if (!userData.passwordHash) {
@@ -117,6 +123,22 @@ export async function login(username, password) {
     localStorage.setItem("username", username);
 
     return true;
+}
+
+
+export async function isLoginDisabled(username) {
+    if (!username) {
+        return false;
+    }
+
+    const userRef = doc(db, "users", username);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) {
+        return true;
+    }
+
+    return userSnap.data().loginDisabled === true;
 }
 
 
