@@ -19,6 +19,11 @@ import {
 from "./scoring.js";
 
 import {
+    calculateFinalRoundScore
+}
+from "./finalRoundEngine.js";
+
+import {
     getGroup
 }
 from "./groups.js";
@@ -206,6 +211,72 @@ async function getRound32Matches() {
     return matches;
 }
 
+function getQfsffGameInfo(match) {
+    const matchId = match.id || "";
+
+    if (matchId.includes("_QF_01")) {
+        return {
+            order: 1,
+            label: "Game 1: Quarter Final 1"
+        };
+    }
+
+    if (matchId.includes("_QF_02")) {
+        return {
+            order: 2,
+            label: "Game 2: Quarter Final 2"
+        };
+    }
+
+    if (matchId.includes("_QF_03")) {
+        return {
+            order: 3,
+            label: "Game 3: Quarter Final 3"
+        };
+    }
+
+    if (matchId.includes("_QF_04")) {
+        return {
+            order: 4,
+            label: "Game 4: Quarter Final 4"
+        };
+    }
+
+    if (matchId.includes("_SF_01")) {
+        return {
+            order: 5,
+            label: "Game 5: Semi Final 1"
+        };
+    }
+
+    if (matchId.includes("_SF_02")) {
+        return {
+            order: 6,
+            label: "Game 6: Semi Final 2"
+        };
+    }
+
+    if (matchId.includes("_3RD_")) {
+        return {
+            order: 7,
+            label: "Game 7: 3rd Place Match"
+        };
+    }
+
+    if (matchId.includes("_F_")) {
+        return {
+            order: 8,
+            label: "Game 8: Final"
+        };
+    }
+
+    return {
+        order: 999,
+        label: matchId
+    };
+}
+
+
 async function getMatchesForRound(round) {
     const matchesSnap = await getDocs(collection(db, "matches"));
     const matches = [];
@@ -218,7 +289,14 @@ async function getMatchesForRound(round) {
         }
     });
 
-    matches.sort((a, b) => a.id.localeCompare(b.id));
+    if (round === "QF-SF-F") {
+        matches.sort((a, b) =>
+            getQfsffGameInfo(a).order -
+            getQfsffGameInfo(b).order
+        );
+    } else {
+        matches.sort((a, b) => a.id.localeCompare(b.id));
+    }
 
     return matches;
 }
@@ -360,8 +438,12 @@ function getDefaultPredictionTableRound(activeRound) {
 }
 
 
-function getRoundLabelForGame(round, gameNumber) {
-    return `${getRoundTitle(round)}: Game ${gameNumber}`;
+function getRoundLabelForGame(round, gameNumber, match = null) {
+    if (round === "QF-SF-F" && match) {
+        return getQfsffGameInfo(match).label;
+    }
+
+    return `Game ${gameNumber}: ${getRoundTitle(round)}`;
 }
 
 
@@ -512,7 +594,7 @@ function renderMyPredictionsTable(matches, matchesMap, myPredictions) {
                             `;
                         }
 
-                        const points = calculatePoints(prediction, result);
+                        const score = getPredictionScore(prediction, result);
 
                         return `
                             <tr>
@@ -531,7 +613,7 @@ function renderMyPredictionsTable(matches, matchesMap, myPredictions) {
                                 </td>
 
                                 <td>
-                                    ${points === null ? "-" : renderStars(points)}
+                                    ${score === null ? "-" : renderScore(score)}
                                 </td>
                             </tr>
                         `;
@@ -753,7 +835,7 @@ async function renderGroupPredictionTable(currentUsername, allMembers, selectedR
 function renderMatchInfoCell(match, result, gameNumber, roundName = "RoundOf32") {
     return `
         <div class="gameNumber">
-            ${getRoundLabelForGame(roundName, gameNumber)}
+            ${getRoundLabelForGame(roundName, gameNumber, match)}
         </div>
 
         <strong>${match.homeTeam} vs ${match.awayTeam}</strong>
@@ -807,7 +889,7 @@ function renderPlayerPredictionCell(prediction, result) {
         `;
     }
 
-    const points = calculatePoints(prediction, result);
+    const score = getPredictionScore(prediction, result);
 
     return `
         <strong>
@@ -822,11 +904,11 @@ function renderPlayerPredictionCell(prediction, result) {
         </span>
 
         ${
-            points === null
+            score === null
             ? ""
             : `
                 <br>
-                <span>${renderStars(points)}</span>
+                <span>${renderScore(score)}</span>
               `
         }
     `;
@@ -896,22 +978,22 @@ async function renderHeadToHeadComparison(currentUsername, otherUsername, groupI
         const myPrediction = myPredictions[match.id];
         const otherPrediction = otherPredictions[match.id];
 
-        const myPoints =
-            myPrediction ? calculatePoints(myPrediction, result) : null;
+        const myScore =
+            myPrediction ? getPredictionScore(myPrediction, result) : null;
 
-        const otherPoints =
-            otherPrediction ? calculatePoints(otherPrediction, result) : null;
+        const otherScore =
+            otherPrediction ? getPredictionScore(otherPrediction, result) : null;
 
-        if (myPoints !== null) myTotal += myPoints;
-        if (otherPoints !== null) otherTotal += otherPoints;
+        if (myScore !== null) myTotal += myScore.totalPoints;
+        if (otherScore !== null) otherTotal += otherScore.totalPoints;
 
         let matchWinnerText = "";
 
-        if (myPoints !== null && otherPoints !== null) {
-            if (myPoints > otherPoints) {
+        if (myScore !== null && otherScore !== null) {
+            if (myScore.totalPoints > otherScore.totalPoints) {
                 myWins++;
                 matchWinnerText = `🏆 Match Winner: ${currentUsername}`;
-            } else if (otherPoints > myPoints) {
+            } else if (otherScore.totalPoints > myScore.totalPoints) {
                 otherWins++;
                 matchWinnerText = `🏆 Match Winner: ${otherUsername}`;
             } else {
@@ -941,12 +1023,12 @@ async function renderHeadToHeadComparison(currentUsername, otherUsername, groupI
 
                     <div class="comparisonPlayerBox">
                         <h4>👤 ${currentUsername}</h4>
-                        ${renderPredictionBox(myPrediction, myPoints)}
+                        ${renderPredictionBox(myPrediction, myScore)}
                     </div>
 
                     <div class="comparisonPlayerBox">
                         <h4>👤 ${otherUsername}</h4>
-                        ${renderPredictionBox(otherPrediction, otherPoints)}
+                        ${renderPredictionBox(otherPrediction, otherScore)}
                     </div>
 
                 </div>
@@ -993,7 +1075,7 @@ async function renderHeadToHeadComparison(currentUsername, otherUsername, groupI
     `;
 }
 
-function renderPredictionBox(prediction, points) {
+function renderPredictionBox(prediction, score) {
     if (!prediction) {
         return `
             <p>No prediction found.</p>
@@ -1015,7 +1097,7 @@ function renderPredictionBox(prediction, points) {
 
         <p>
             Points:
-            ${points === null ? "-" : renderStars(points)}
+            ${score === null ? "-" : renderScore(score)}
         </p>
     `;
 }
@@ -1038,18 +1120,18 @@ async function renderMiniLeaderboardForMatch(match, result, groupMembers) {
 
         if (!prediction) continue;
 
-        const points = calculatePoints(prediction, result);
+        const score = getPredictionScore(prediction, result);
 
-        if (points === null) continue;
+        if (score === null) continue;
 
         rows.push({
             player: member,
-            points
+            score
         });
     }
 
     rows.sort((a, b) =>
-        b.points - a.points ||
+        b.score.totalPoints - a.score.totalPoints ||
         a.player.localeCompare(b.player)
     );
 
@@ -1068,7 +1150,7 @@ async function renderMiniLeaderboardForMatch(match, result, groupMembers) {
                         <tr>
                             <td>${getRankDisplay(index)}</td>
                             <td>${row.player}</td>
-                            <td>${renderStars(row.points)}</td>
+                            <td>${renderScore(row.score)}</td>
                         </tr>
                     `).join("")}
                 </tbody>
@@ -1076,6 +1158,43 @@ async function renderMiniLeaderboardForMatch(match, result, groupMembers) {
 
         </div>
     `;
+}
+
+
+function getPredictionScore(prediction, result) {
+    if (!prediction) {
+        return null;
+    }
+
+    if (result && result.round === "QF-SF-F") {
+        return calculateFinalRoundScore(prediction, result);
+    }
+
+    const normalPoints = calculatePoints(prediction, result);
+
+    if (normalPoints === null) {
+        return null;
+    }
+
+    return {
+        normalPoints,
+        bonusPoints: 0,
+        totalPoints: normalPoints
+    };
+}
+
+
+function renderBonus(bonusPoints) {
+    if (!bonusPoints || bonusPoints < 1) {
+        return "";
+    }
+
+    return ` ${"🅱️".repeat(bonusPoints)}`;
+}
+
+
+function renderScore(score) {
+    return `${renderStars(score.normalPoints)}${renderBonus(score.bonusPoints)}`;
 }
 
 

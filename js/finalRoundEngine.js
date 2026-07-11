@@ -253,7 +253,7 @@ export async function propagateActualFinalRoundTeams() {
     }
 }
 
-export function calculateFinalRoundPoints(prediction, result) {
+function calculateFinalRoundNormalPoints(prediction, result) {
     if (
         !prediction ||
         !result ||
@@ -274,7 +274,8 @@ export function calculateFinalRoundPoints(prediction, result) {
     const predictedTeams = [prediction.homeTeam, prediction.awayTeam].filter(Boolean);
     const actualTeams = [result.homeTeam, result.awayTeam].filter(Boolean);
 
-    const correctlyQualifiedTeams = predictedTeams.filter(team => actualTeams.includes(team));
+    const correctlyQualifiedTeams =
+        predictedTeams.filter(team => actualTeams.includes(team));
 
     if (correctlyQualifiedTeams.length === 2) {
         return calculatePoints(prediction, result);
@@ -287,7 +288,10 @@ export function calculateFinalRoundPoints(prediction, result) {
     const correctTeam = correctlyQualifiedTeams[0];
     let points = 0;
 
-    if (prediction.winner === result.winner && prediction.winner === correctTeam) {
+    if (
+        prediction.winner === result.winner &&
+        prediction.winner === correctTeam
+    ) {
         points += 1;
     }
 
@@ -306,4 +310,54 @@ export function calculateFinalRoundPoints(prediction, result) {
     }
 
     return points;
+}
+
+
+export function calculateFinalRoundBonus(prediction, result) {
+    if (
+        !prediction ||
+        !result ||
+        result.status !== "finished" ||
+        !result.winner ||
+        prediction.winner !== result.winner
+    ) {
+        return 0;
+    }
+
+    if (result.stage === "SF" || result.stage === "3RD") {
+        return 1;
+    }
+
+    if (result.stage === "F") {
+        return 2;
+    }
+
+    return 0;
+}
+
+
+export function calculateFinalRoundScore(prediction, result) {
+    const normalPoints = calculateFinalRoundNormalPoints(prediction, result);
+
+    if (normalPoints === null) {
+        return null;
+    }
+
+    const bonusPoints = calculateFinalRoundBonus(prediction, result);
+
+    return {
+        normalPoints,
+        bonusPoints,
+        totalPoints: normalPoints + bonusPoints
+    };
+}
+
+
+/*
+ * Kept for compatibility with any older code that expects only the
+ * normal 0-4 match score.
+ */
+export function calculateFinalRoundPoints(prediction, result) {
+    const score = calculateFinalRoundScore(prediction, result);
+    return score === null ? null : score.normalPoints;
 }

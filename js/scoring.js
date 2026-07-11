@@ -74,6 +74,7 @@ export function emptyLeaderboardRow(player) {
         totalGames: 0,
         totalPoints: 0,
         individualWins: 0,
+        bonusPoints: 0,
         fourPointers: 0,
         threePointers: 0,
         twoPointers: 0,
@@ -83,9 +84,10 @@ export function emptyLeaderboardRow(player) {
 }
 
 
-export function addPointsToRow(row, points) {
+export function addPointsToRow(row, points, bonusPoints = 0) {
     row.totalGames += 1;
-    row.totalPoints += points;
+    row.totalPoints += points + bonusPoints;
+    row.bonusPoints = (row.bonusPoints || 0) + bonusPoints;
 
     if (points === 4) row.fourPointers += 1;
     if (points === 3) row.threePointers += 1;
@@ -100,6 +102,7 @@ export function sortLeaderboard(rows) {
         b.totalPoints - a.totalPoints ||
         b.individualWins - a.individualWins ||
         b.fourPointers - a.fourPointers ||
+        (b.bonusPoints || 0) - (a.bonusPoints || 0) ||
         b.threePointers - a.threePointers ||
         b.twoPointers - a.twoPointers ||
         b.onePointers - a.onePointers ||

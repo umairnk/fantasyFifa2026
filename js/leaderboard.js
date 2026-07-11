@@ -22,7 +22,7 @@ import {
 from "./groups.js";
 
 import {
-    calculateFinalRoundPoints
+    calculateFinalRoundScore
 }
 from "./finalRoundEngine.js";
 
@@ -121,14 +121,18 @@ async function recalculateLeaderboard(leaderboardId, groupId, roundFilter = "Ove
 
             if (!match) continue;
 
-            const points =
+            const score =
                 match.round === "QF-SF-F"
-                    ? calculateFinalRoundPoints(prediction, match)
-                    : calculatePoints(prediction, match);
+                    ? calculateFinalRoundScore(prediction, match)
+                    : createStandardScore(calculatePoints(prediction, match));
 
-            if (points === null) continue;
+            if (score === null) continue;
 
-            addPointsToRow(leaderboard[username], points);
+            addPointsToRow(
+                leaderboard[username],
+                score.normalPoints,
+                score.bonusPoints
+            );
         }
     }
 
@@ -181,20 +185,20 @@ async function calculateIndividualWins(leaderboard, players, matches) {
 
             if (!prediction) continue;
 
-            const points =
+            const score =
                 match.round === "QF-SF-F"
-                    ? calculateFinalRoundPoints(prediction, match)
-                    : calculatePoints(prediction, match);
+                    ? calculateFinalRoundScore(prediction, match)
+                    : createStandardScore(calculatePoints(prediction, match));
 
-            if (points === null) continue;
+            if (score === null) continue;
 
             matchScores.push({
                 player,
-                points
+                points: score.totalPoints
             });
 
-            if (points > bestPoints) {
-                bestPoints = points;
+            if (score.totalPoints > bestPoints) {
+                bestPoints = score.totalPoints;
             }
         }
 
@@ -204,6 +208,19 @@ async function calculateIndividualWins(leaderboard, players, matches) {
             }
         });
     }
+}
+
+
+function createStandardScore(points) {
+    if (points === null) {
+        return null;
+    }
+
+    return {
+        normalPoints: points,
+        bonusPoints: 0,
+        totalPoints: points
+    };
 }
 
 
@@ -373,6 +390,7 @@ function renderLeaderboard(
                         <th>Total Points</th>
                         ${showWins ? "<th>Wins</th>" : ""}
                         <th>4P</th>
+                        <th>Bonus</th>
                         <th>3P</th>
                         <th>2P</th>
                         <th>1P</th>
@@ -402,6 +420,7 @@ function renderLeaderboard(
                             ${showWins ? `<td>${row.individualWins}</td>` : ""}
 
                             <td>${row.fourPointers}</td>
+                            <td>${row.bonusPoints || 0}</td>
                             <td>${row.threePointers}</td>
                             <td>${row.twoPointers}</td>
                             <td>${row.onePointers}</td>
