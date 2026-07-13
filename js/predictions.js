@@ -78,14 +78,23 @@ async function initializeMatchRound(matchesArray, roundName) {
                 createdAt: new Date().toISOString()
             });
         } else {
-            await setDoc(matchRef, {
+            const updateData = {
                 id: match.id,
                 round: roundName,
-                homeTeam: match.homeTeam,
-                awayTeam: match.awayTeam,
                 startTime: match.startTime || null,
                 updatedAt: new Date().toISOString()
-            }, { merge: true });
+            };
+
+            /*
+             * QF-SF-F teams are dynamic. Do not overwrite propagated teams
+             * with placeholders such as "Winner QF1" whenever the app starts.
+             */
+            if (roundName !== "QF-SF-F") {
+                updateData.homeTeam = match.homeTeam;
+                updateData.awayTeam = match.awayTeam;
+            }
+
+            await setDoc(matchRef, updateData, { merge: true });
         }
     }
 }

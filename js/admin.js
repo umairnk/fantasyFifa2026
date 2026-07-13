@@ -24,6 +24,11 @@ import {
 }
 from "./adminTree.js";
 
+import {
+    propagateActualFinalRoundTeams
+}
+from "./finalRoundEngine.js";
+
 let currentAdminUsername = null;
 let currentUserIsFullAdmin = false;
 
@@ -342,14 +347,29 @@ async function loadAdminMatches() {
             : "RoundOf16";
 
     if (activeRound === "QF-SF-F") {
+        // Repair and refresh the actual bracket teams from all saved results.
+        await propagateActualFinalRoundTeams();
+
         await loadFinalRoundAdminTree({
             currentUserIsFullAdmin,
             onAfterSave: async () => {
-                showAdminStatus("The match result was saved. Leaderboards are being updated, please wait...");
+                showAdminStatus("The match result was saved. Qualified teams are being updated...");
+
+                // QF winners fill the Semi Finals.
+                // SF winners fill the Final and SF losers fill the 3rd Place match.
+                await propagateActualFinalRoundTeams();
+
+                showAdminStatus("Qualified teams are updated. Leaderboards are being updated, please wait...");
+
                 await updateLeaderboardsAfterResult();
                 await markResultsUpdated();
-                showAdminStatus("Leaderboards are updated.", "successText");
-                alert("Result saved and leaderboards updated.");
+
+                showAdminStatus(
+                    "Qualified teams and leaderboards are updated.",
+                    "successText"
+                );
+
+                alert("Result saved. Qualified teams and leaderboards are updated.");
                 await reloadAdminPage();
             }
         });
