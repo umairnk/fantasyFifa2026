@@ -332,24 +332,21 @@ function calculateFinalRoundNormalPoints(prediction, result) {
         return calculatePoints(prediction, result);
     }
 
+    /*
+     * The bonus calculation already proves that prediction.winner and
+     * result.winner are equal. Award the normal winner point directly,
+     * independent of the opponent predicted for this later-round match.
+     */
+    let points =
+        teamsAreEqual(prediction.winner, result.winner)
+            ? 1
+            : 0;
+
     if (correctlyQualifiedTeams.length === 0) {
-        return 0;
+        return points;
     }
 
     const correctTeam = correctlyQualifiedTeams[0];
-    let points = 0;
-
-    /*
-     * Exactly one predicted team reached the actual match.
-     * Award the normal winner point when that team was predicted
-     * to win and actually won.
-     */
-    if (
-        teamsAreEqual(prediction.winner, correctTeam) &&
-        teamsAreEqual(result.winner, correctTeam)
-    ) {
-        points += 1;
-    }
 
     const predictedGoalsForCorrectTeam =
         getGoalsForTeam(prediction, correctTeam);

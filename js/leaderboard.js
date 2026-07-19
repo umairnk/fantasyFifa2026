@@ -24,7 +24,7 @@ from "./groups.js";
 import {
     calculateFinalRoundScore
 }
-from "./finalRoundEngine.js";
+from "./finalRoundEngine.js?v=20260719-3";
 
 
 const LEADERBOARD_ROUNDS = [
