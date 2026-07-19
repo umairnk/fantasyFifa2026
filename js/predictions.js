@@ -68,6 +68,7 @@ async function initializeMatchRound(matchesArray, roundName) {
             await setDoc(matchRef, {
                 id: match.id,
                 round: roundName,
+                stage: match.stage || null,
                 homeTeam: match.homeTeam,
                 awayTeam: match.awayTeam,
                 startTime: match.startTime || null,
@@ -81,6 +82,7 @@ async function initializeMatchRound(matchesArray, roundName) {
             const updateData = {
                 id: match.id,
                 round: roundName,
+                stage: match.stage || null,
                 startTime: match.startTime || null,
                 updatedAt: new Date().toISOString()
             };
@@ -614,7 +616,7 @@ function renderMyPredictionsTable(matches, matchesMap, myPredictions) {
                                 </td>
 
                                 <td>
-                                    <strong>${prediction.winner}</strong>
+                                    <strong>${formatPredictedWinner(prediction)}</strong>
                                 </td>
 
                                 <td>
@@ -891,6 +893,37 @@ function renderMatchInfoCell(match, result, gameNumber, roundName = "RoundOf32")
     `;
 }
 
+function formatPredictedWinner(prediction) {
+    if (!prediction || !prediction.winner) {
+        return "Not selected";
+    }
+
+    const stage = prediction.stage || "";
+    const isLaterFinalRoundMatch =
+        stage === "SF" ||
+        stage === "3RD" ||
+        stage === "F" ||
+        (prediction.matchId || "").includes("_SF_") ||
+        (prediction.matchId || "").includes("_3RD") ||
+        (prediction.matchId || "").includes("_FINAL");
+
+    if (!isLaterFinalRoundMatch) {
+        return prediction.winner;
+    }
+
+    const opponent =
+        prediction.winner === prediction.homeTeam
+            ? prediction.awayTeam
+            : prediction.winner === prediction.awayTeam
+                ? prediction.homeTeam
+                : null;
+
+    return opponent
+        ? `${prediction.winner} (vs ${opponent})`
+        : prediction.winner;
+}
+
+
 function renderPlayerPredictionCell(prediction, result) {
     if (!prediction) {
         return `
@@ -909,7 +942,7 @@ function renderPlayerPredictionCell(prediction, result) {
 
         <span>
             Winner:
-            <strong>${prediction.winner}</strong>
+            <strong>${formatPredictedWinner(prediction)}</strong>
         </span>
 
         ${
@@ -1101,7 +1134,7 @@ function renderPredictionBox(prediction, score) {
 
         <p>
             Winner:
-            <strong>${prediction.winner}</strong>
+            <strong>${formatPredictedWinner(prediction)}</strong>
         </p>
 
         <p>

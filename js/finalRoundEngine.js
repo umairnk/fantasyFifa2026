@@ -40,6 +40,20 @@ export function formatFinalRoundStage(stage) {
     return stage || "Match";
 }
 
+
+export function getFinalRoundStage(match) {
+    if (!match) return null;
+
+    const matchId = match.id || match.matchId || "";
+
+    if (matchId.includes("_QF_")) return "QF";
+    if (matchId.includes("_SF_")) return "SF";
+    if (matchId.includes("_3RD")) return "3RD";
+    if (matchId.includes("_FINAL")) return "F";
+
+    return match.stage || null;
+}
+
 export async function getFinalRoundMatches() {
     const snap = await getDocs(collection(db, "matches"));
     const matches = [];
@@ -253,6 +267,35 @@ export async function propagateActualFinalRoundTeams() {
     }
 }
 
+function normalizeTeamName(team) {
+    return String(team || "")
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLocaleLowerCase();
+}
+
+
+function teamsAreEqual(teamA, teamB) {
+    const normalizedA = normalizeTeamName(teamA);
+    const normalizedB = normalizeTeamName(teamB);
+
+    return normalizedA !== "" && normalizedA === normalizedB;
+}
+
+
+function getGoalsForTeam(match, team) {
+    if (teamsAreEqual(match?.homeTeam, team)) {
+        return match.homeGoals;
+    }
+
+    if (teamsAreEqual(match?.awayTeam, team)) {
+        return match.awayGoals;
+    }
+
+    return null;
+}
+
+
 function calculateFinalRoundNormalPoints(prediction, result) {
     if (
         !prediction ||
@@ -267,15 +310,23 @@ function calculateFinalRoundNormalPoints(prediction, result) {
         return null;
     }
 
-    if (result.stage === "QF") {
+    const stage = getFinalRoundStage(result);
+
+    if (stage === "QF") {
         return calculatePoints(prediction, result);
     }
 
-    const predictedTeams = [prediction.homeTeam, prediction.awayTeam].filter(Boolean);
-    const actualTeams = [result.homeTeam, result.awayTeam].filter(Boolean);
+    const predictedTeams =
+        [prediction.homeTeam, prediction.awayTeam].filter(Boolean);
 
-    const correctlyQualifiedTeams =
-        predictedTeams.filter(team => actualTeams.includes(team));
+    const actualTeams =
+        [result.homeTeam, result.awayTeam].filter(Boolean);
+
+    const correctlyQualifiedTeams = predictedTeams.filter(predictedTeam =>
+        actualTeams.some(actualTeam =>
+            teamsAreEqual(predictedTeam, actualTeam)
+        )
+    );
 
     if (correctlyQualifiedTeams.length === 2) {
         return calculatePoints(prediction, result);
@@ -288,24 +339,29 @@ function calculateFinalRoundNormalPoints(prediction, result) {
     const correctTeam = correctlyQualifiedTeams[0];
     let points = 0;
 
+    /*
+     * Exactly one predicted team reached the actual match.
+     * Award the normal winner point when that team was predicted
+     * to win and actually won.
+     */
     if (
-        prediction.winner === result.winner &&
-        prediction.winner === correctTeam
+        teamsAreEqual(prediction.winner, correctTeam) &&
+        teamsAreEqual(result.winner, correctTeam)
     ) {
         points += 1;
     }
 
     const predictedGoalsForCorrectTeam =
-        prediction.homeTeam === correctTeam
-            ? prediction.homeGoals
-            : prediction.awayGoals;
+        getGoalsForTeam(prediction, correctTeam);
 
     const actualGoalsForCorrectTeam =
-        result.homeTeam === correctTeam
-            ? result.homeGoals
-            : result.awayGoals;
+        getGoalsForTeam(result, correctTeam);
 
-    if (predictedGoalsForCorrectTeam === actualGoalsForCorrectTeam) {
+    if (
+        predictedGoalsForCorrectTeam !== null &&
+        actualGoalsForCorrectTeam !== null &&
+        Number(predictedGoalsForCorrectTeam) === Number(actualGoalsForCorrectTeam)
+    ) {
         points += 1;
     }
 
@@ -319,16 +375,18 @@ export function calculateFinalRoundBonus(prediction, result) {
         !result ||
         result.status !== "finished" ||
         !result.winner ||
-        prediction.winner !== result.winner
+        !teamsAreEqual(prediction.winner, result.winner)
     ) {
         return 0;
     }
 
-    if (result.stage === "SF" || result.stage === "3RD") {
+    const stage = getFinalRoundStage(result);
+
+    if (stage === "SF" || stage === "3RD") {
         return 1;
     }
 
-    if (result.stage === "F") {
+    if (stage === "F") {
         return 2;
     }
 
